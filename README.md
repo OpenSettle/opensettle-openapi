@@ -5,13 +5,29 @@ OpenAPI 3.1 specification.
 
 ## What's in this repo
 
-- `openapi.json` — the canonical machine-readable API description
+- `openapi.json` — the canonical machine-readable API description (pretty-printed)
 - `openapi.yaml` — the same spec, YAML-formatted for human edits and reviews
+- `scripts/regenerate.mjs` — pulls the live spec and rewrites both files
 
 The live spec is also served from the API itself at
 [`api.opensettle.io/v1/openapi.json`](https://api.opensettle.io/v1/openapi.json).
 That endpoint is the source of truth at runtime; this repo publishes
 versioned snapshots so tooling can pin to a known revision.
+
+## Keeping the snapshot fresh
+
+```bash
+npm install
+npm run regenerate        # fetches https://api.opensettle.io/v1/openapi.json
+                          # and rewrites openapi.json + openapi.yaml
+```
+
+Override the source for offline / staging regeneration:
+
+```bash
+OPENAPI_SOURCE=./local-spec.json npm run regenerate
+OPENAPI_SOURCE=https://staging.opensettle.io/v1/openapi.json npm run regenerate
+```
 
 ## Usage
 
@@ -52,8 +68,9 @@ The spec uses the same major version as the API surface: `v1`. Backwards-
 incompatible changes get a major bump; new endpoints and fields are
 additive within a major version.
 
-This repo tags each release as `v<major>.<minor>.<patch>` matching the
-spec's `info.version` field. The `main` branch tracks the live API.
+Each meaningful spec change is tagged `v<major>.<minor>.<patch>` to match
+the spec's `info.version` field, so SDK generators can pin. The `main`
+branch always tracks the live API — pull a tag if you need stability.
 
 ## License
 
