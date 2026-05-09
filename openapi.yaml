@@ -3,8 +3,8 @@ info:
   title: OpenSettle API
   version: 1.0.0
   description: >-
-    Non-custodial Web3 payments API. Stablecoin settlement on Base / Ethereum / Polygon / Arbitrum
-    (EVM), plus Solana and Tron. Authenticate with a workspace-scoped Bearer API key (`sk_live_...`
+    Non-custodial Web3 payments API. Stablecoin (USDC, USDT) settlement on Base, Ethereum, Polygon,
+    Arbitrum, Solana, and Tron. Authenticate with a workspace-scoped Bearer API key (`sk_live_...`
     or `sk_test_...`). All money amounts are minor units (cents). All times are ISO-8601 UTC
     strings.
   contact:
