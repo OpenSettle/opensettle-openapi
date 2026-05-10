@@ -949,7 +949,8 @@
               "type": "string",
               "enum": [
                 "active",
-                "deleted"
+                "at_risk",
+                "churned"
               ]
             }
           },
@@ -957,7 +958,8 @@
             "name": "q",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 120
             },
             "description": "Substring match on email or name"
           },
@@ -1035,18 +1037,25 @@
                 "properties": {
                   "email": {
                     "type": "string",
-                    "format": "email"
+                    "format": "email",
+                    "maxLength": 254
                   },
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 120
                   },
                   "wallet": {
                     "type": "string",
-                    "nullable": true
+                    "maxLength": 100
                   },
                   "country": {
                     "type": "string",
-                    "nullable": true
+                    "minLength": 2,
+                    "maxLength": 2
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
                   }
                 }
               }
@@ -1141,19 +1150,24 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email"
-                  },
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 120
                   },
                   "wallet": {
                     "type": "string",
+                    "maxLength": 100,
                     "nullable": true
                   },
                   "country": {
                     "type": "string",
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "nullable": true
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true,
                     "nullable": true
                   }
                 }
@@ -1296,7 +1310,8 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "maxLength": 200
+                    "minLength": 1,
+                    "maxLength": 120
                   },
                   "description": {
                     "type": "string",
@@ -1389,10 +1404,13 @@
                 "type": "object",
                 "properties": {
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
                   },
                   "description": {
                     "type": "string",
+                    "maxLength": 1000,
                     "nullable": true
                   },
                   "active": {
@@ -1400,7 +1418,8 @@
                   },
                   "metadata": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": true,
+                    "nullable": true
                   }
                 }
               }
@@ -1417,6 +1436,37 @@
                 }
               }
             }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Hard-delete a product",
+        "description": "Returns 409 if any subscription still references the product (or any of its prices). Cascades to delete the product's prices.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Product still referenced by a subscription"
           }
         }
       }
@@ -1490,16 +1540,19 @@
                 "type": "object",
                 "required": [
                   "amount",
-                  "currency",
                   "interval"
                 ],
                 "properties": {
                   "amount": {
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Minor units (cents)"
                   },
                   "currency": {
                     "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3,
+                    "default": "USD",
                     "example": "USD"
                   },
                   "interval": {
@@ -1539,7 +1592,7 @@
         "tags": [
           "products"
         ],
-        "summary": "Archive (or unarchive) a price",
+        "summary": "Update a price (toggle active flag, edit metadata)",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -1562,6 +1615,11 @@
                 "properties": {
                   "active": {
                     "type": "boolean"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "nullable": true
                   }
                 }
               }
@@ -1578,6 +1636,37 @@
                 }
               }
             }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Hard-delete a price",
+        "description": "Returns 409 if any subscription still references this price.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "priceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Price still referenced by a subscription"
           }
         }
       }
@@ -1680,24 +1769,14 @@
                 "type": "object",
                 "required": [
                   "customerId",
-                  "amountMinor",
-                  "currency",
                   "chain",
                   "token",
                   "lineItems"
                 ],
+                "description": "The invoice total is derived from `lineItems[].quantity * unitAmountMinor`; there is no top-level amount field.",
                 "properties": {
                   "customerId": {
                     "type": "string"
-                  },
-                  "amountMinor": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
-                  "currency": {
-                    "type": "string",
-                    "minLength": 3,
-                    "maxLength": 3
                   },
                   "chain": {
                     "$ref": "#/components/schemas/ChainId"
@@ -1705,20 +1784,39 @@
                   "token": {
                     "$ref": "#/components/schemas/TokenSymbol"
                   },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3,
+                    "default": "USD",
+                    "example": "USD"
+                  },
                   "lineItems": {
                     "type": "array",
                     "minItems": 1,
+                    "maxItems": 100,
                     "items": {
                       "$ref": "#/components/schemas/LineItem"
                     }
                   },
                   "memo": {
                     "type": "string",
-                    "maxLength": 500
+                    "maxLength": 1000
                   },
-                  "dueAt": {
+                  "dueInDays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 365,
+                    "default": 14,
+                    "description": "Days from creation until the invoice is due."
+                  },
+                  "subscriptionId": {
                     "type": "string",
-                    "format": "date-time"
+                    "description": "Set when the invoice is generated for a subscription period."
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
                   }
                 }
               }
@@ -1912,9 +2010,9 @@
                 "type": "object",
                 "required": [
                   "mode",
-                  "customerId",
                   "successUrl"
                 ],
+                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). Mode `payment` requires `invoiceId`; mode `subscription` requires `priceId` and a chain/token.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -1925,6 +2023,14 @@
                   },
                   "customerId": {
                     "type": "string"
+                  },
+                  "customerEmail": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "customerName": {
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "invoiceId": {
                     "type": "string"
@@ -2037,6 +2143,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "trialing",
                 "active",
                 "past_due",
                 "paused",
@@ -2113,8 +2220,7 @@
                   "customerId",
                   "priceId",
                   "chain",
-                  "token",
-                  "autopay"
+                  "token"
                 ],
                 "properties": {
                   "customerId": {
@@ -2135,7 +2241,8 @@
                       "allowance",
                       "smart-wallet",
                       "manual"
-                    ]
+                    ],
+                    "default": "manual"
                   },
                   "trialDays": {
                     "type": "integer",
@@ -2296,25 +2403,24 @@
           }
         ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "mode"
-                ],
+                "description": "Body is optional — server defaults to `mode: at_period_end` with no reason.",
                 "properties": {
                   "mode": {
                     "type": "string",
                     "enum": [
-                      "now",
+                      "immediately",
                       "at_period_end"
-                    ]
+                    ],
+                    "default": "at_period_end"
                   },
                   "reason": {
                     "type": "string",
-                    "maxLength": 200
+                    "maxLength": 256
                   }
                 }
               }
@@ -2373,9 +2479,14 @@
                   "priceId": {
                     "type": "string"
                   },
-                  "prorate": {
-                    "type": "boolean",
-                    "default": true
+                  "prorationMode": {
+                    "type": "string",
+                    "enum": [
+                      "immediately",
+                      "at_period_end"
+                    ],
+                    "default": "at_period_end",
+                    "description": "`immediately` prorates and bills now; `at_period_end` defers the swap."
                   }
                 }
               }
@@ -2695,10 +2806,16 @@
                 ],
                 "properties": {
                   "challengeId": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 80
                   },
                   "signature": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 60,
+                    "maxLength": 200,
+                    "pattern": "^(0x[0-9a-fA-F]+|[1-9A-HJ-NP-Za-km-z]+)$",
+                    "description": "Hex (0x…) for EVM/Tron, base58 for Solana Ed25519."
                   }
                 }
               }
@@ -2805,11 +2922,13 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "txHash"
+                  "refundTxHash"
                 ],
                 "properties": {
-                  "txHash": {
-                    "type": "string"
+                  "refundTxHash": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 200
                   }
                 }
               }
@@ -2892,15 +3011,21 @@
                 "properties": {
                   "url": {
                     "type": "string",
-                    "format": "uri"
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "Must be HTTPS."
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200,
+                    "nullable": true
                   },
                   "events": {
                     "type": "array",
+                    "minItems": 1,
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1
                     }
                   },
                   "status": {
@@ -2947,8 +3072,24 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Deleted"
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -2976,22 +3117,6 @@
             "$ref": "#/components/parameters/IdempotencyKey"
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "graceSeconds": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 604800
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Rotated",
@@ -3000,13 +3125,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "secret": {
+                    "endpoint": {
+                      "$ref": "#/components/schemas/WebhookEndpoint"
+                    },
+                    "signingSecret": {
                       "type": "string",
                       "example": "whsec_…"
-                    },
-                    "rotationGraceUntil": {
-                      "type": "string",
-                      "format": "date-time"
                     }
                   }
                 }
@@ -3024,7 +3148,8 @@
         "tags": [
           "webhooks"
         ],
-        "summary": "Synchronously fire a sample event at the endpoint",
+        "summary": "Enqueue a synthetic test event delivery for the endpoint",
+        "description": "Emits a `webhook.endpoint.test` event addressed to this endpoint. Delivery is enqueued via the regular webhook delivery pipeline; poll `/webhook_endpoints/{id}/deliveries` to inspect the result.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3038,45 +3163,27 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "eventType"
-                ],
-                "properties": {
-                  "eventType": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
-            "description": "Endpoint hit; status + latency reported",
+            "description": "Test event enqueued",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "eventId"
+                  ],
                   "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    },
-                    "status": {
-                      "type": "integer"
-                    },
-                    "latencyMs": {
-                      "type": "integer"
+                    "eventId": {
+                      "type": "string"
                     }
                   }
                 }
               }
             }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -3217,14 +3324,17 @@
                 "properties": {
                   "amountMinor": {
                     "type": "integer",
-                    "description": "Defaults to full amount"
+                    "minimum": 1,
+                    "description": "Defaults to full payment amount."
                   },
                   "reason": {
                     "type": "string",
-                    "nullable": true
+                    "maxLength": 256
                   },
                   "recipientAddress": {
                     "type": "string",
+                    "minLength": 4,
+                    "maxLength": 128,
                     "description": "Required when not captured at payment time. Strict per-chain validation: cross-chain (e.g. EVM address on Solana payment) is refused."
                   }
                 }
@@ -3324,17 +3434,25 @@
                 "properties": {
                   "url": {
                     "type": "string",
-                    "format": "uri"
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "Must be HTTPS."
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "events": {
                     "type": "array",
+                    "minItems": 1,
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1
                     },
-                    "description": "`[\"*\"]` for all events"
+                    "default": [
+                      "*"
+                    ],
+                    "description": "`[\"*\"]` for all events."
                   }
                 }
               }
