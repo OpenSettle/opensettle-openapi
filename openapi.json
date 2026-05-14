@@ -205,7 +205,8 @@
               "pending",
               "confirmed",
               "failed",
-              "refunded"
+              "refunded",
+              "reorged"
             ]
           },
           "txHash": {
@@ -680,9 +681,18 @@
             "format": "date-time",
             "nullable": true
           },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "hostedUrl": {
+            "type": "string",
+            "description": "Relative URL path for redirecting the buyer (e.g. `/checkout/<hostedToken>`). Concatenate with the web origin (`${WEB_ORIGIN}${hostedUrl}`) to get the buyer-facing URL. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
           }
         }
       },
@@ -3207,7 +3217,8 @@
                 "pending",
                 "confirmed",
                 "failed",
-                "refunded"
+                "refunded",
+                "reorged"
               ]
             }
           },

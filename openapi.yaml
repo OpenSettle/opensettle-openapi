@@ -151,6 +151,7 @@ components:
             - confirmed
             - failed
             - refunded
+            - reorged
         txHash:
           type: string
           nullable: true
@@ -493,9 +494,19 @@ components:
           type: string
           format: date-time
           nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
         createdAt:
           type: string
           format: date-time
+        hostedUrl:
+          type: string
+          description: >-
+            Relative URL path for redirecting the buyer (e.g. `/checkout/<hostedToken>`).
+            Concatenate with the web origin (`${WEB_ORIGIN}${hostedUrl}`) to get the buyer-facing
+            URL. Uses the unguessable hosted-token, not the timestamp-prefixed `id`.
     Wallet:
       type: object
       properties:
@@ -2081,6 +2092,7 @@ paths:
               - confirmed
               - failed
               - refunded
+              - reorged
         - name: customerId
           in: query
           schema:
