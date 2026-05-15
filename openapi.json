@@ -449,7 +449,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "inv_01HZ…"
+            "example": "in_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -614,7 +614,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "co_01HZ…"
+            "example": "chk_01HZ…"
           },
           "workspaceId": {
             "type": "string"
