@@ -216,6 +216,25 @@
           "confirmations": {
             "type": "integer"
           },
+          "screeningVerdict": {
+            "type": "string",
+            "enum": [
+              "not_screened",
+              "screened_clean",
+              "screened_flagged",
+              "screen_error"
+            ],
+            "description": "Sanctions-screening verdict for the payer address. Default `not_screened` until a real screening provider (Chainalysis/TRM) is wired. The `screened_flagged` rows are the ops triage queue."
+          },
+          "screeningProvider": {
+            "type": "string",
+            "nullable": true
+          },
+          "screeningScreenedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "confirmedAt": {
             "type": "string",
             "format": "date-time",
@@ -3235,6 +3254,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "screeningVerdict",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "not_screened",
+                "screened_clean",
+                "screened_flagged",
+                "screen_error"
+              ]
+            },
+            "description": "Filter by sanctions-screening verdict. Backed by a partial index so a `screened_flagged` query is cheap at scale. Today's default with the noop provider is every payment landing as `not_screened`; once Chainalysis/TRM is wired this is the ops triage surface."
           },
           {
             "name": "expand",
