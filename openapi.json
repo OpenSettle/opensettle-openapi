@@ -71,11 +71,29 @@
         "type": "object",
         "required": [
           "code",
-          "message"
+          "message",
+          "request_id"
         ],
         "properties": {
           "code": {
             "type": "string",
+            "enum": [
+              "invalid_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict",
+              "invalid_state_transition",
+              "rate_limited",
+              "aal_required",
+              "restricted_jurisdiction",
+              "kyb_required",
+              "chain_reverted",
+              "insufficient_confirmations",
+              "signing_required",
+              "attestation_required",
+              "internal_error"
+            ],
             "example": "invalid_request"
           },
           "message": {
@@ -86,22 +104,27 @@
             "type": "string",
             "nullable": true,
             "example": "Idempotency-Key"
+          },
+          "request_id": {
+            "type": "string",
+            "example": "req_01HZ…"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Code-specific extras. `restricted_jurisdiction` carries `{ code, name, reason }`; `kyb_required` carries `{ kybStatus }`; `attestation_required` carries `{ category, requiredAge }`."
           }
         }
       },
       "ErrorEnvelope": {
         "type": "object",
         "required": [
-          "error",
-          "requestId"
+          "error"
         ],
         "properties": {
           "error": {
             "$ref": "#/components/schemas/Error"
-          },
-          "requestId": {
-            "type": "string",
-            "example": "req_01HZ…"
           }
         }
       },
@@ -135,7 +158,8 @@
             "type": "string",
             "enum": [
               "active",
-              "deleted"
+              "at_risk",
+              "churned"
             ]
           },
           "createdAt": {
@@ -2515,7 +2539,7 @@
                       "at_period_end"
                     ],
                     "default": "at_period_end",
-                    "description": "`immediately` prorates and bills now; `at_period_end` defers the swap."
+                    "description": "Records the merchant's intent for how this swap should be billed. **Reserved for future use** — the platform does not currently issue proration credits or charges; the new price takes effect at the next billing cycle either way. The value is persisted on the subscription's audit trail and echoed on the `subscription.plan_changed` event so your reconciliation pipeline can stage logic for when proration ships."
                   }
                 }
               }
