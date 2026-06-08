@@ -447,6 +447,8 @@
             "type": "string",
             "enum": [
               "one_time",
+              "minute",
+              "hour",
               "week",
               "month",
               "year"
@@ -590,6 +592,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "trialing",
               "active",
               "past_due",
               "paused",
@@ -680,7 +683,8 @@
             ]
           },
           "customerId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "invoiceId": {
             "type": "string",
@@ -708,7 +712,7 @@
           },
           "successUrl": {
             "type": "string",
-            "format": "uri"
+            "description": "Buyer return URL, or \"\" when none was set (the hosted success page then shows no redirect)."
           },
           "cancelUrl": {
             "type": "string",
@@ -735,7 +739,7 @@
           },
           "hostedUrl": {
             "type": "string",
-            "description": "Relative URL path for redirecting the buyer (e.g. `/checkout/<hostedToken>`). Concatenate with the web origin (`${WEB_ORIGIN}${hostedUrl}`) to get the buyer-facing URL. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
+            "description": "Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`). Redirect the buyer straight to it — do NOT prepend an origin. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
           }
         }
       },
@@ -1612,6 +1616,8 @@
                     "type": "string",
                     "enum": [
                       "one_time",
+                      "minute",
+                      "hour",
                       "week",
                       "month",
                       "year"
@@ -2046,7 +2052,7 @@
           "checkouts"
         ],
         "summary": "Create a hosted checkout session",
-        "description": "Returns a session with `hostedUrl`; redirect the customer to `${WEB_ORIGIN}${hostedUrl}` (uses an unguessable 192-bit `hostedToken`, not the merchant-facing `id`). Mode `payment` requires `invoiceId`; mode `subscription` requires `priceId`.",
+        "description": "Returns a session with an absolute `hostedUrl`; redirect the customer straight to it (uses an unguessable 192-bit `hostedToken`, not the merchant-facing `id`). Mode `payment` requires `invoiceId`; mode `subscription` requires `priceId`.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -2062,10 +2068,9 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "mode",
-                  "successUrl"
+                  "mode"
                 ],
-                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). Mode `payment` requires `invoiceId`; mode `subscription` requires `priceId` and a chain/token.",
+                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). For mode `payment` the customer is OPTIONAL — omit both to create a GUEST checkout (scan-and-pay, no email), e.g. a reusable payment link; the response `customerId` is then null. Mode `subscription` always requires a customer. Mode `payment` takes exactly one of `invoiceId`, a one-time `priceId`, or an ad-hoc `amount` (the latter two also need a chain + token); mode `subscription` requires a recurring `priceId` and a chain/token.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -2090,6 +2095,22 @@
                   },
                   "priceId": {
                     "type": "string"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Ad-hoc one-time charge in MINOR units (cents). mode=payment only — alternative to invoiceId / a one-time priceId."
+                  },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3,
+                    "description": "Currency for an ad-hoc `amount`. Defaults to USD."
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Buyer-facing description for an ad-hoc `amount` checkout."
                   },
                   "successUrl": {
                     "type": "string",
@@ -3153,7 +3174,7 @@
           "webhooks"
         ],
         "summary": "Rotate the signing secret",
-        "description": "Returns a new plaintext secret + the grace window during which the previous secret will continue to verify. After the grace window ends, only the new secret verifies.",
+        "description": "Returns a new plaintext signing secret. There is NO grace window — the previous secret stops verifying immediately, so deploy the new secret to your endpoint as you rotate. (The webhook retry curve gives you time to redeploy before deliveries are dropped.)",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3313,6 +3334,24 @@
               ]
             },
             "description": "Returns text/csv when set"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive lower bound on createdAt (ISO 8601)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive upper bound on createdAt (ISO 8601)."
           },
           {
             "name": "cursor",
