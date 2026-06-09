@@ -32,6 +32,8 @@ tags:
     description: Endpoint registration + event replay
   - name: checkouts
     description: Hosted payment sessions
+  - name: payment_links
+    description: Reusable, shareable payment links
   - name: wallets
     description: Merchant settlement wallets (verify required)
   - name: health
@@ -142,6 +144,15 @@ components:
         customerId:
           type: string
           nullable: true
+        subscriptionId:
+          type: string
+          nullable: true
+        invoiceId:
+          type: string
+          nullable: true
+        checkoutId:
+          type: string
+          nullable: true
         walletId:
           type: string
           nullable: true
@@ -177,11 +188,47 @@ components:
             - failed
             - refunded
             - reorged
+        failureReason:
+          type: string
+          nullable: true
+          description: Set when status is `failed`.
+        description:
+          type: string
+          nullable: true
         txHash:
           type: string
           nullable: true
+          description: On-chain settlement tx hash. Null until observed — never substitute the payment id.
+        blockNumber:
+          type: integer
+          nullable: true
         confirmations:
           type: integer
+        refundTxHash:
+          type: string
+          nullable: true
+          description: Merchant-signed refund transaction hash.
+        refundAmountMinor:
+          type: integer
+          nullable: true
+          description: Amount refunded to the payer, in minor units (supports partial refunds).
+        refundRecipient:
+          type: string
+          nullable: true
+          description: Address the refund is/was sent to.
+        refundBroadcastAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the merchant reported broadcasting the refund tx.
+        refundedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the refund confirmed on-chain (status → refunded).
+        refundReason:
+          type: string
+          nullable: true
         screeningVerdict:
           type: string
           enum:
@@ -199,6 +246,35 @@ components:
           type: string
           format: date-time
           nullable: true
+        tokenAmountBase:
+          type: string
+          nullable: true
+          description: Exact on-chain Transfer value in token base units (string bigint).
+        unmatchedInbound:
+          type: boolean
+          description: >-
+            True when an inbound transfer matched no pending checkout — credit manually or refund.
+            Pair with closeMatchCheckoutId.
+        closeMatchCheckoutId:
+          type: string
+          nullable: true
+          description: >-
+            A pending checkout whose target was within ±5% of an unmatched inbound transfer — the
+            buyer's likely intent.
+        expectedTokenAmountBase:
+          type: string
+          nullable: true
+          description: The intended checkout target in base units (set on a close-match).
+        receivedTokenAmountBase:
+          type: string
+          nullable: true
+          description: What the buyer actually sent in base units (set on a close-match).
+        reorgSuspected:
+          type: boolean
+          description: >-
+            True when the reorg-afterglow sweep flagged that the canonical chain no longer agrees
+            with the persisted block hash. Status stays `confirmed`; pairs with the
+            `payment.reversed` webhook.
         confirmedAt:
           type: string
           format: date-time
@@ -555,6 +631,62 @@ components:
             Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`).
             Redirect the buyer straight to it — do NOT prepend an origin. Uses the unguessable
             hosted-token, not the timestamp-prefixed `id`.
+    PaymentLink:
+      type: object
+      description: >-
+        A reusable, shareable payment link. Each visit to its `url` spawns a fresh checkout, so one
+        link can collect many payments. Back it with a fixed `amount`, a saved one-time `priceId`,
+        or an `openAmount` the buyer names ("name your price" / top-up).
+      properties:
+        id:
+          type: string
+          example: plink_01HZ…
+        url:
+          type: string
+          description: >-
+            Absolute, reusable buyer-facing URL (e.g. `https://opensettle.io/pay/<token>`). Share or
+            embed it directly — do NOT prepend an origin.
+        description:
+          type: string
+        priceId:
+          type: string
+          nullable: true
+        amountMinor:
+          type: integer
+          description: Fixed charge in minor units. `0` when `openAmount` is true.
+        openAmount:
+          type: boolean
+          description: >-
+            When true the buyer chooses the amount on the hosted page ("name your price" / top-up),
+            bounded by minAmountMinor/maxAmountMinor.
+        minAmountMinor:
+          type: integer
+          nullable: true
+          description: Effective floor for an open-amount link (defaults to $0.50 when unset).
+        maxAmountMinor:
+          type: integer
+          nullable: true
+          description: Optional ceiling for an open-amount link.
+        presetAmounts:
+          type: array
+          nullable: true
+          items:
+            type: integer
+          description: Optional quick-pick chips (each within [min, max]).
+        currency:
+          type: string
+          example: USD
+        chain:
+          $ref: '#/components/schemas/ChainId'
+        token:
+          $ref: '#/components/schemas/TokenSymbol'
+        successUrl:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
     Wallet:
       type: object
       properties:
@@ -1482,6 +1614,134 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Checkout'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/workspaces/{workspaceId}/payment_links:
+    post:
+      tags:
+        - payment_links
+      summary: Create a reusable payment link
+      description: >-
+        A shareable link whose `url` (`https://opensettle.io/pay/<token>`) spawns a fresh checkout
+        on every visit — built for scan-and-pay, embeds, or "pay what you want". Supply exactly ONE
+        amount source: a fixed `amount`, a saved one-time `priceId`, or `openAmount: true` to let
+        the buyer name the amount (bounded by `minAmount`/`maxAmount`). Buyers check out as guests —
+        no email required. The 201 body wraps the resource as `{ "paymentLink": PaymentLink }`.
+        Requires the `developer` role.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - chain
+                - token
+              description: >-
+                Exactly one amount source: `amount` (fixed), `priceId` (saved one-time price), or
+                `openAmount: true`. `description` is required for a fixed `amount` or an open-amount
+                link.
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                  description: Fixed charge in MINOR units (cents).
+                priceId:
+                  type: string
+                  description: A saved one-time price to charge.
+                openAmount:
+                  type: boolean
+                  description: Let the buyer choose the amount ("name your price" / top-up).
+                minAmount:
+                  type: integer
+                  minimum: 1
+                  description: Floor for an open-amount link (defaults to 50 minor units / $0.50).
+                maxAmount:
+                  type: integer
+                  minimum: 1
+                  description: Optional ceiling for an open-amount link.
+                presetAmounts:
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 1
+                  minItems: 1
+                  maxItems: 8
+                  description: Optional quick-pick chips for an open-amount link (each within [min, max]).
+                description:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                currency:
+                  type: string
+                  minLength: 3
+                  maxLength: 3
+                  description: Defaults to USD; must match the token's peg.
+                chain:
+                  $ref: '#/components/schemas/ChainId'
+                token:
+                  $ref: '#/components/schemas/TokenSymbol'
+                successUrl:
+                  type: string
+                  format: uri
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Link created (wrapped as `{ paymentLink }`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentLink'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      tags:
+        - payment_links
+      summary: List payment links
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: 'Payment links for the workspace (`{ data: PaymentLink[] }`)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentLink'
+  /v1/workspaces/{workspaceId}/payment_links/{id}:
+    delete:
+      tags:
+        - payment_links
+      summary: Deactivate a payment link
+      description: >-
+        Soft-deactivates the link so its `url` stops spawning new checkouts. Checkouts already
+        spawned from it are unaffected. Requires the `developer` role.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
         '404':
           $ref: '#/components/responses/NotFound'
   /v1/workspaces/{workspaceId}/subscriptions:
