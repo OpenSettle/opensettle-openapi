@@ -35,7 +35,11 @@ tags:
   - name: payment_links
     description: Reusable, shareable payment links
   - name: wallets
-    description: Merchant settlement wallets (verify required)
+    description: >-
+      Merchant settlement wallets. NOTE: these are managed in the OpenSettle dashboard and
+      authenticate with a dashboard SESSION, not an API key — calling them with an
+      `sk_live_`/`sk_test_` Bearer token returns 401. Add and verify your settlement wallets in the
+      dashboard before going live; the shapes are documented here for reference.
   - name: health
     description: Liveness + readiness probes
 components:
@@ -1873,6 +1877,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Paused
@@ -1894,6 +1899,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '200':
           description: Resumed
@@ -1915,6 +1921,7 @@ paths:
           required: true
           schema:
             type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -2013,7 +2020,8 @@ paths:
       description: >-
         Creates the wallet row in `unverified` state and returns a one-time challenge. Sign the
         challenge with the wallet's key, then POST to `/wallets/{id}/verify` with the signature.
-        Step-up auth required.
+        Requires a DASHBOARD SESSION + step-up auth — NOT an API key (a Bearer token returns 401).
+        Add settlement wallets in the dashboard.
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
         - $ref: '#/components/parameters/IdempotencyKey'
