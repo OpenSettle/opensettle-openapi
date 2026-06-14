@@ -166,6 +166,25 @@
               "churned"
             ]
           },
+          "activeSubscriptions": {
+            "type": "integer",
+            "description": "Materialized count of this customer's non-canceled subscriptions."
+          },
+          "lifetimeValue": {
+            "type": "integer",
+            "deprecated": true,
+            "description": "Legacy materialized counter — a never-written cache that is always 0. Do NOT use; read `lifetimeValueMinor` for realized lifetime volume."
+          },
+          "lifetimeValueMinor": {
+            "type": "integer",
+            "description": "Realized lifetime volume in minor units (cents): SUM(amountMinor) over confirmed + refunded payments. Always present on every customer response."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Arbitrary merchant-supplied key/value metadata."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -672,6 +691,18 @@
           "currency": {
             "type": "string"
           },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "one_time",
+              "minutely",
+              "hourly",
+              "weekly",
+              "monthly",
+              "yearly"
+            ],
+            "description": "Recurring cadence (mapped from the price interval via priceIntervalToView). Returned on the list and single-retrieve responses."
+          },
           "chain": {
             "$ref": "#/components/schemas/ChainId"
           },
@@ -737,6 +768,29 @@
           },
           "mrrMinor": {
             "type": "integer"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Arbitrary merchant-supplied key/value metadata."
+          },
+          "lastAutopayFailure": {
+            "type": "object",
+            "nullable": true,
+            "description": "Why the last autopay (allowance) renewal failed. Only populated on the single-retrieve response for a `past_due` subscription with `autopay: \"allowance\"`; `null` otherwise (including on list responses).",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "The payment failure reason."
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "When the failed renewal payment was last updated."
+              }
+            }
           },
           "createdAt": {
             "type": "string",
@@ -2905,7 +2959,7 @@
                       "at_period_end"
                     ],
                     "default": "at_period_end",
-                    "description": "Records the merchant's intent for how this swap should be billed. **Reserved for future use** — the platform does not currently issue proration credits or charges; the new price takes effect at the next billing cycle either way. The value is persisted on the subscription's audit trail and echoed on the `subscription.plan_changed` event so your reconciliation pipeline can stage logic for when proration ships."
+                    "description": "How this swap is billed. Only `at_period_end` (the default) is implemented: the new price takes effect at the next billing cycle, with no mid-cycle credit or charge, and is echoed on the `subscription.plan_changed` event. `immediately` is **not implemented** — passing it is rejected with `400 invalid_request` (no proration credits/charges exist yet) rather than silently ignored, so you can't be misled into thinking a mid-cycle charge fired. The enum keeps `immediately` wire-compatible for when proration billing ships."
                   }
                 }
               }
@@ -2922,6 +2976,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "422": {
             "$ref": "#/components/responses/InvalidStateTransition"
@@ -3393,7 +3450,12 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookEndpoint"
+                  "type": "object",
+                  "properties": {
+                    "endpoint": {
+                      "$ref": "#/components/schemas/WebhookEndpoint"
+                    }
+                  }
                 }
               }
             }
