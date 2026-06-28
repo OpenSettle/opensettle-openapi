@@ -1,7 +1,7 @@
 # opensettle-openapi
 
 The [OpenSettle](https://opensettle.io) API as a single-source-of-truth
-OpenAPI 3.1 specification.
+OpenAPI 3.0.3 specification.
 
 ## What's in this repo
 

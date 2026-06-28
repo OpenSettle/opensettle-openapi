@@ -1,8 +1,8 @@
 {
-  "openapi": "3.1.0",
+  "openapi": "3.0.3",
   "info": {
     "title": "OpenSettle API",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "Non-custodial Web3 payments API. Stablecoin (USDC, USDT) settlement on the EVM chains Base, Ethereum, Polygon, and Arbitrum. Solana and Tron are implemented at the API + wallet-verification layer (`/wallets` accepts `chain: \"solana\" | \"tron\"`) and the chain reader will detect inbound SPL / TRC-20 deposits to verified wallets, but customer-facing hosted checkout is currently EVM-only. Authenticate with a workspace-scoped Bearer API key (`sk_live_...` or `sk_test_...`). All money amounts are minor units (cents). All times are ISO-8601 UTC strings.",
     "contact": {
       "name": "OpenSettle",
@@ -54,7 +54,23 @@
     },
     {
       "name": "wallets",
-      "description": "Merchant settlement wallets. NOTE: these are managed in the OpenSettle dashboard and authenticate with a dashboard SESSION, not an API key — calling them with an `sk_live_`/`sk_test_` Bearer token returns 401. Add and verify your settlement wallets in the dashboard before going live; the shapes are documented here for reference."
+      "description": "Merchant settlement wallets. NOTE: these are managed in the OpenSettle dashboard and authenticate with a dashboard SESSION, not an API key \u2014 calling them with an `sk_live_`/`sk_test_` Bearer token returns 401. Add and verify your settlement wallets in the dashboard before going live; the shapes are documented here for reference."
+    },
+    {
+      "name": "rails",
+      "description": "Settlement readiness. Unlike `wallets` (dashboard-session-only), this IS API-key readable \u2014 a backend can gate on which (chain, token) pairs are actually ready before creating a checkout."
+    },
+    {
+      "name": "affiliates",
+      "description": "Partner / affiliate program: program config, partners (incl. self-signup applicant approval), and the non-custodial commission ledger the merchant pays out from their own wallet. The whole feature is INERT until the program is enabled. Workspace-scoped endpoints require an API key with `restricted` (developer) or `full` (admin) permission \u2014 partner PII and the payout ledger are never `readonly`/viewer-readable."
+    },
+    {
+      "name": "referrals",
+      "description": "Merchant-to-merchant referral program: a workspace's own referral code + the referrals it has driven, and applying another merchant's code to this workspace."
+    },
+    {
+      "name": "affiliate_signup",
+      "description": "PUBLIC, unauthenticated, rate-limited affiliate self-signup \u2014 the partner-facing front door for a merchant's `/a/<slug>` page. No API key."
     },
     {
       "name": "health",
@@ -66,8 +82,8 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "sk_{live|test}_…",
-        "description": "Workspace-scoped API key. The key's scope determines which workspace it operates against; the URL `:workspaceId` must match. Permissions: `readonly` → viewer, `restricted` → developer, `full` → admin."
+        "bearerFormat": "sk_{live|test}_\u2026",
+        "description": "Workspace-scoped API key. The key's scope determines which workspace it operates against; the URL `:workspaceId` must match. Permissions: `readonly` \u2192 viewer, `restricted` \u2192 developer, `full` \u2192 admin."
       }
     },
     "schemas": {
@@ -111,7 +127,7 @@
           },
           "request_id": {
             "type": "string",
-            "example": "req_01HZ…"
+            "example": "req_01HZ\u2026"
           },
           "metadata": {
             "type": "object",
@@ -137,7 +153,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "cus_01HZ…"
+            "example": "cus_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -173,7 +189,7 @@
           "lifetimeValue": {
             "type": "integer",
             "deprecated": true,
-            "description": "Legacy materialized counter — a never-written cache that is always 0. Do NOT use; read `lifetimeValueMinor` for realized lifetime volume."
+            "description": "Legacy materialized counter \u2014 a never-written cache that is always 0. Do NOT use; read `lifetimeValueMinor` for realized lifetime volume."
           },
           "lifetimeValueMinor": {
             "type": "integer",
@@ -201,7 +217,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "pay_01HZ…"
+            "example": "pay_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -280,7 +296,7 @@
           "txHash": {
             "type": "string",
             "nullable": true,
-            "description": "On-chain settlement tx hash. Null until observed — never substitute the payment id."
+            "description": "On-chain settlement tx hash. Null until observed \u2014 never substitute the payment id."
           },
           "blockNumber": {
             "type": "integer",
@@ -299,6 +315,10 @@
             "nullable": true,
             "description": "Amount refunded to the payer, in minor units (supports partial refunds)."
           },
+          "refundedTotalMinor": {
+            "type": "integer",
+            "description": "Cumulative amount refunded to the customer (partial + full), in minor units. Unlike the per-attempt refundAmountMinor, this stays accurate on a still-`confirmed` partially-refunded payment \u2014 gate \"how much is still refundable?\" (amountMinor \u2212 this) and reconcile net retained on it."
+          },
           "refundRecipient": {
             "type": "string",
             "nullable": true,
@@ -314,7 +334,7 @@
             "type": "string",
             "format": "date-time",
             "nullable": true,
-            "description": "When the refund confirmed on-chain (status → refunded)."
+            "description": "When the refund confirmed on-chain (status \u2192 refunded)."
           },
           "refundReason": {
             "type": "string",
@@ -342,16 +362,29 @@
           "tokenAmountBase": {
             "type": "string",
             "nullable": true,
-            "description": "Exact on-chain Transfer value in token base units (string bigint)."
+            "description": "Exact on-chain Transfer value in token base units (string bigint). AUTHORITATIVE settled amount. For most integrations prefer the convenience signals `fullySettled` / `settledUsdMinor` below; gate \"did they pay enough?\" on `tokenAmountBase` with BigInt math only if you need raw base units. Do NOT use expectedTokenAmountBase/receivedTokenAmountBase (those are close-match-only and null on a clean payment)."
+          },
+          "tokenDecimals": {
+            "type": "integer",
+            "description": "Canonical on-chain decimals for this (chain, token), from OpenSettle's frozen token registry. Interpret tokenAmountBase with THIS \u2014 human amount = tokenAmountBase / 10^tokenDecimals; minor units (cents) = tokenAmountBase / 10^(tokenDecimals-2). Read it instead of hardcoding a per-token table: a hardcoded 6 silently accepts a ~1e12x underpayment the day a token settles at 18 decimals."
+          },
+          "settledUsdMinor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "The on-chain settled value scaled to USD cents (= tokenAmountBase / 10^(tokenDecimals-2)). Convenience signal so you never re-implement base-unit BigInt scaling; exact for the 1:1 USD-pegged stablecoins supported today. Null until an on-chain amount is recorded."
+          },
+          "fullySettled": {
+            "type": "boolean",
+            "description": "True when the received on-chain amount met or exceeded what the payment was expected to settle. A normal exact match is true; a close-match row is true only when received \u2265 expected. Gate access on THIS instead of trusting status === \"confirmed\" alone \u2014 a dust-band underpayment can auto-credit yet not be fully settled."
           },
           "unmatchedInbound": {
             "type": "boolean",
-            "description": "True when an inbound transfer matched no pending checkout — credit manually or refund. Pair with closeMatchCheckoutId."
+            "description": "True when an inbound transfer matched no pending checkout \u2014 credit manually or refund. Pair with closeMatchCheckoutId."
           },
           "closeMatchCheckoutId": {
             "type": "string",
             "nullable": true,
-            "description": "A pending checkout whose target was within ±5% of an unmatched inbound transfer — the buyer's likely intent."
+            "description": "A pending checkout whose target was within \u00b15% of an unmatched inbound transfer \u2014 the buyer's likely intent."
           },
           "expectedTokenAmountBase": {
             "type": "string",
@@ -375,6 +408,12 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Merchant-supplied metadata, snapshotted from the originating checkout at payment creation, so you can recover your account binding (e.g. metadata.user_id) from the Payment without a checkout re-fetch. NOTE: the ID-only payment events (payment.confirmed / payment.pending / payment.failed) deliver just paymentId + checkoutId \u2014 GET the payment (or read data.payment on payment.refunded) to read this."
           }
         }
       },
@@ -398,8 +437,19 @@
           "events": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "oneOf": [
+                {
+                  "enum": [
+                    "*"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/WebhookEventType"
+                }
+              ]
+            },
+            "description": "Subscribed events: the `*` wildcard or specific WebhookEventType values."
           },
           "status": {
             "type": "string",
@@ -410,6 +460,17 @@
           },
           "successRate": {
             "type": "number"
+          },
+          "consecutiveFailures": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Consecutive failed deliveries; resets on any success. 20 \u2192 auto-disabled."
+          },
+          "rotationGraceUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "If set, the previous signing secret stays valid until this time after a rotate."
           },
           "createdAt": {
             "type": "string",
@@ -465,6 +526,618 @@
           }
         }
       },
+      "WebhookEventType": {
+        "type": "string",
+        "description": "Every webhook event OpenSettle can emit.",
+        "enum": [
+          "allowance.depleted",
+          "checkout.created",
+          "checkout.expired",
+          "checkout.succeeded",
+          "commission.accrued",
+          "commission.adjusted",
+          "commission.paid",
+          "commission.voided",
+          "customer.created",
+          "customer.deleted",
+          "customer.updated",
+          "invoice.created",
+          "invoice.paid",
+          "invoice.past_due",
+          "invoice.reminder_sent",
+          "invoice.sent",
+          "invoice.voided",
+          "payment.confirmed",
+          "payment.failed",
+          "payment.pending",
+          "payment.refunded",
+          "payment.reorg_suspected",
+          "payment.reorged",
+          "payment.reversed",
+          "price.created",
+          "price.updated",
+          "product.created",
+          "product.updated",
+          "refund.broadcast",
+          "refund.confirmed",
+          "refund.initiated",
+          "subscription.canceled",
+          "subscription.created",
+          "subscription.past_due",
+          "subscription.paused",
+          "subscription.payment_failed",
+          "subscription.plan_changed",
+          "subscription.renewed",
+          "subscription.resumed",
+          "subscription.trial_ended",
+          "wallet.connected",
+          "wallet.removed",
+          "wallet.verified",
+          "webhook.endpoint.created",
+          "webhook.endpoint.test"
+        ]
+      },
+      "WebhookEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "livemode",
+          "created_at",
+          "data"
+        ],
+        "description": "The ONE webhook envelope OpenSettle emits. The event name is always at `type` (never `event`/`eventType`) and the resource is always at `data` (never `object`/`payload`/`data.object`). The schema of `data` is selected by `type` \u2014 see the WebhookData_* schemas. SIGNATURE: every delivery carries `X-OpenSettle-Signature: t=<unix>,v1=<hex>` where `v1` is the HMAC-SHA256 of `${t}.${rawBody}` using the endpoint's signing secret; verify it with a constant-time compare AND reject timestamps outside a \u00b1300-second tolerance (the SDK `verifyWebhook` default) to bound replay.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "evt_01H\u2026"
+          },
+          "type": {
+            "$ref": "#/components/schemas/WebhookEventType"
+          },
+          "livemode": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WebhookData_payment"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_payment_refunded"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_payment_reorg"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_refund"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_checkout"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_checkout_id"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_customer"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_customer_id"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_invoice"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_price"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_product"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_subscription"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_subscription_id"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_subscription_renewed"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_wallet"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_wallet_removed"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_allowance"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_webhook_endpoint"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookData_webhook_endpoint_test"
+              }
+            ]
+          }
+        }
+      },
+      "WebhookData_payment": {
+        "type": "object",
+        "required": [
+          "paymentId"
+        ],
+        "description": "payment.pending / payment.confirmed / payment.failed. `payment.confirmed` carries the authoritative settlement scalars below (paymentId, checkoutId, status, amountMinor, chain, token, fullySettled, settledUsdMinor) so you can gate access straight off the signed event without a GET. Full merchant metadata stays OFF the event (size/PII) \u2014 GET /v1/payments/{id} for that, or read data.payment on payment.refunded.",
+        "properties": {
+          "paymentId": {
+            "type": "string"
+          },
+          "checkoutId": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "subscriptionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "priceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mode": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Payment status at emit time (on payment.confirmed: `confirmed`)."
+          },
+          "amountMinor": {
+            "type": "integer",
+            "description": "Expected charge in USD cents."
+          },
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenSymbol"
+          },
+          "fullySettled": {
+            "type": "boolean",
+            "description": "On payment.confirmed: true when the received on-chain amount met/exceeded the expected target. Gate access on THIS \u2014 a dust-band underpayment can auto-credit yet read false."
+          },
+          "settledUsdMinor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "On payment.confirmed: the on-chain settled value scaled to USD cents (tokenAmountBase / 10^(tokenDecimals-2))."
+          },
+          "failureReason": {
+            "type": "string"
+          },
+          "unmatched": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WebhookData_payment_refunded": {
+        "type": "object",
+        "required": [
+          "payment"
+        ],
+        "description": "payment.refunded",
+        "properties": {
+          "payment": {
+            "$ref": "#/components/schemas/Payment"
+          }
+        }
+      },
+      "WebhookData_payment_reorg": {
+        "type": "object",
+        "required": [
+          "paymentId"
+        ],
+        "description": "payment.reversed / payment.reorg_suspected / payment.reorged",
+        "properties": {
+          "paymentId": {
+            "type": "string"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "blockNumber": {
+            "type": "integer"
+          },
+          "persistedHash": {
+            "type": "string"
+          },
+          "canonicalHash": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_refund": {
+        "type": "object",
+        "required": [
+          "paymentId"
+        ],
+        "description": "refund.initiated / refund.broadcast / refund.confirmed",
+        "properties": {
+          "paymentId": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "integer"
+          },
+          "refundTxHash": {
+            "type": "string"
+          },
+          "refundAmountMinor": {
+            "type": "integer"
+          },
+          "refundedTotalMinor": {
+            "type": "integer"
+          },
+          "fullyRefunded": {
+            "type": "boolean",
+            "description": "On refund.confirmed: whether the payment is now fully refunded."
+          }
+        }
+      },
+      "WebhookData_checkout": {
+        "type": "object",
+        "required": [
+          "checkout"
+        ],
+        "description": "checkout.created / checkout.succeeded",
+        "properties": {
+          "checkout": {
+            "$ref": "#/components/schemas/Checkout"
+          },
+          "paymentId": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_checkout_id": {
+        "type": "object",
+        "required": [
+          "checkoutId"
+        ],
+        "description": "checkout.expired",
+        "properties": {
+          "checkoutId": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_customer": {
+        "type": "object",
+        "required": [
+          "customer"
+        ],
+        "description": "customer.created / customer.updated",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WebhookData_customer_id": {
+        "type": "object",
+        "required": [
+          "customerId"
+        ],
+        "description": "customer.deleted",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_invoice": {
+        "type": "object",
+        "required": [
+          "invoice"
+        ],
+        "description": "invoice.created / sent / paid / voided / past_due / reminder_sent",
+        "properties": {
+          "invoice": {
+            "$ref": "#/components/schemas/Invoice"
+          },
+          "paymentId": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_price": {
+        "type": "object",
+        "required": [
+          "price"
+        ],
+        "description": "price.created / price.updated",
+        "properties": {
+          "price": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WebhookData_product": {
+        "type": "object",
+        "required": [
+          "product"
+        ],
+        "description": "product.created / product.updated",
+        "properties": {
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WebhookData_subscription": {
+        "type": "object",
+        "required": [
+          "subscription"
+        ],
+        "description": "subscription.created / paused / resumed / canceled / plan_changed",
+        "properties": {
+          "subscription": {
+            "$ref": "#/components/schemas/Subscription"
+          },
+          "checkoutId": {
+            "type": "string"
+          },
+          "paymentId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "prorationMode": {
+            "type": "string"
+          },
+          "previousPriceId": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_subscription_id": {
+        "type": "object",
+        "required": [
+          "subscriptionId"
+        ],
+        "description": "subscription.past_due / payment_failed / trial_ended",
+        "properties": {
+          "subscriptionId": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer"
+          },
+          "nextRetryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "WebhookData_subscription_renewed": {
+        "type": "object",
+        "required": [
+          "subscription",
+          "invoice"
+        ],
+        "description": "subscription.renewed",
+        "properties": {
+          "subscription": {
+            "$ref": "#/components/schemas/Subscription"
+          },
+          "invoice": {
+            "$ref": "#/components/schemas/Invoice"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "nextBillingDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        }
+      },
+      "WebhookData_wallet": {
+        "type": "object",
+        "required": [
+          "wallet"
+        ],
+        "description": "wallet.connected / wallet.verified",
+        "properties": {
+          "wallet": {
+            "$ref": "#/components/schemas/Wallet"
+          },
+          "inheritedFromWalletId": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "WebhookData_wallet_removed": {
+        "type": "object",
+        "required": [
+          "walletId"
+        ],
+        "description": "wallet.removed",
+        "properties": {
+          "walletId": {
+            "type": "string"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "address": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookData_allowance": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "description": "allowance.depleted \u2014 the allowance resource (same shape as the allowances API).",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenSymbol"
+          },
+          "ownerAddress": {
+            "type": "string"
+          },
+          "spenderWalletId": {
+            "type": "string",
+            "nullable": true
+          },
+          "spenderAddress": {
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowedAmount": {
+            "type": "string",
+            "description": "Base units (string bigint)."
+          },
+          "lastObservedRemaining": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenDecimals": {
+            "type": "integer"
+          },
+          "unlimited": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "approvalTxHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "approvalLogIndex": {
+            "type": "integer",
+            "nullable": true
+          },
+          "approvalBlockNumber": {
+            "type": "integer",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastObservedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "depletedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WebhookData_webhook_endpoint": {
+        "type": "object",
+        "required": [
+          "endpoint"
+        ],
+        "description": "webhook.endpoint.created",
+        "properties": {
+          "endpoint": {
+            "$ref": "#/components/schemas/WebhookEndpoint"
+          }
+        }
+      },
+      "WebhookData_webhook_endpoint_test": {
+        "type": "object",
+        "required": [
+          "endpointId"
+        ],
+        "description": "webhook.endpoint.test",
+        "properties": {
+          "endpointId": {
+            "type": "string"
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
       "PaginatedList": {
         "type": "object",
         "properties": {
@@ -480,6 +1153,22 @@
             "nullable": true
           }
         }
+      },
+      "Rail": {
+        "type": "object",
+        "required": [
+          "chain",
+          "token"
+        ],
+        "properties": {
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenSymbol"
+          }
+        },
+        "description": "A settlement rail the workspace can accept payment on: a verified, non-removed wallet exists for this chain+token."
       },
       "ChainId": {
         "type": "string",
@@ -504,7 +1193,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "prod_01HZ…"
+            "example": "prod_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -535,7 +1224,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "price_01HZ…"
+            "example": "price_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -560,7 +1249,8 @@
               "week",
               "month",
               "year"
-            ]
+            ],
+            "description": "Billing cadence in base form (the canonical price interval). The Subscription resource returns the adverb view form (e.g. \"monthly\") mapped via priceIntervalToView; create-price requests also take this base form."
           },
           "active": {
             "type": "boolean"
@@ -602,7 +1292,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "in_01HZ…"
+            "example": "in_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -671,7 +1361,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "sub_01HZ…"
+            "example": "sub_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -803,7 +1493,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "chk_01HZ…"
+            "example": "chk_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -838,7 +1528,22 @@
             "nullable": true
           },
           "amountMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "The actual charged amount in USD cents. When a coupon is applied this is the DISCOUNTED charge, NOT the list price \u2014 reconcile against originalAmountMinor / couponDiscountMinor."
+          },
+          "couponCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Applied coupon code, or null when none was applied."
+          },
+          "couponDiscountMinor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Discount the coupon took off the list price, in USD cents, or null."
+          },
+          "originalAmountMinor": {
+            "type": "integer",
+            "description": "List price before any coupon (= amountMinor + couponDiscountMinor). Equals amountMinor when no coupon was applied."
           },
           "currency": {
             "type": "string"
@@ -882,21 +1587,21 @@
           },
           "hostedUrl": {
             "type": "string",
-            "description": "Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`). Redirect the buyer straight to it — do NOT prepend an origin. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
+            "description": "Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`). Redirect the buyer straight to it \u2014 do NOT prepend an origin. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
           }
         }
       },
       "PaymentLink": {
         "type": "object",
-        "description": "A reusable, shareable payment link. Each visit to its `url` spawns a fresh checkout, so one link can collect many payments. Back it with a fixed `amount`, a saved one-time `priceId`, or an `openAmount` the buyer names (\"name your price\" / top-up).",
+        "description": "A reusable, shareable payment link. Each visit to its `url` spawns a fresh checkout, so one link can collect many payments. Back it with a fixed `amount`, a saved `priceId` (one-time, or a recurring price to make a Subscribe link), or an `openAmount` the buyer names (\"name your price\" / top-up).",
         "properties": {
           "id": {
             "type": "string",
-            "example": "plink_01HZ…"
+            "example": "plink_01HZ\u2026"
           },
           "url": {
             "type": "string",
-            "description": "Absolute, reusable buyer-facing URL (e.g. `https://opensettle.io/pay/<token>`). Share or embed it directly — do NOT prepend an origin."
+            "description": "Absolute, reusable buyer-facing URL (e.g. `https://opensettle.io/pay/<token>`). Share or embed it directly \u2014 do NOT prepend an origin."
           },
           "description": {
             "type": "string"
@@ -958,7 +1663,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "wlt_01HZ…"
+            "example": "wlt_01HZ\u2026"
           },
           "workspaceId": {
             "type": "string"
@@ -971,7 +1676,7 @@
           },
           "address": {
             "type": "string",
-            "description": "EIP-55 checksum for EVM, base58 32-byte for Solana, base58check `T…` for Tron."
+            "description": "EIP-55 checksum for EVM, base58 32-byte for Solana, base58check `T\u2026` for Tron."
           },
           "nickname": {
             "type": "string"
@@ -1007,7 +1712,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "wch_01HZ…"
+            "example": "wch_01HZ\u2026"
           },
           "message": {
             "type": "string",
@@ -1016,6 +1721,379 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "AffiliateProgram": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "defaultCommissionBps",
+          "subscriptionCommission",
+          "couponId",
+          "autoApprove",
+          "signupSlug"
+        ],
+        "description": "A workspace's affiliate-program config. OFF by default \u2014 the whole feature is INERT until `enabled` is true. A never-configured program returns the defaults shown here (enabled false, 0 bps, etc.).",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master switch. While false, no attribution accrues and the signup link 404s."
+          },
+          "defaultCommissionBps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Default partner commission in basis points (2000 = 20%); a per-affiliate `commissionBps` overrides it."
+          },
+          "subscriptionCommission": {
+            "type": "string",
+            "enum": [
+              "first",
+              "recurring"
+            ],
+            "description": "`first` = commission on the first charge only; `recurring` = on every renewal."
+          },
+          "couponId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional customer-discount coupon auto-applied by this program's affiliate links (reuses the coupon engine)."
+          },
+          "autoApprove": {
+            "type": "boolean",
+            "description": "When true a public self-signup applicant is auto-promoted to `active`; when false (default) applicants land as `pending` and earn nothing until approved."
+          },
+          "signupSlug": {
+            "type": "string",
+            "nullable": true,
+            "description": "Public self-signup slug \u2014 the partner-facing URL is `${SITE}/a/<signupSlug>`. Null = no public front door. Generated when the program is first enabled."
+          }
+        }
+      },
+      "Affiliate": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "name",
+          "email",
+          "commissionBps",
+          "payoutWallet",
+          "payoutChain",
+          "status",
+          "createdAt"
+        ],
+        "description": "A partner registered for a merchant's affiliate program.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "aff_01HZ\u2026"
+          },
+          "code": {
+            "type": "string",
+            "description": "The attribution link param \u2014 `?aff=CODE`. Unique per workspace. Server-generated for self-signups; URL-safe (`[A-Za-z0-9_-]`)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Partner contact, used to pay them out."
+          },
+          "commissionBps": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Per-affiliate commission override in basis points; null = inherit the program default."
+          },
+          "payoutWallet": {
+            "type": "string",
+            "nullable": true,
+            "description": "The partner's own crypto address their commission is paid to."
+          },
+          "payoutChain": {
+            "type": "string",
+            "nullable": true,
+            "description": "Chain the payout wallet is registered for (a ChainId value). The payout settles on the SALE's chain; a mismatch is refused at payout-build time."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "pending",
+              "disabled"
+            ],
+            "description": "`active` = earning; `pending` = a self-signup applicant awaiting merchant approval (earns nothing); `disabled` = removed/rejected."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AffiliateCommission": {
+        "type": "object",
+        "required": [
+          "id",
+          "affiliateId",
+          "paymentId",
+          "saleAmountMinor",
+          "commissionMinor",
+          "currency",
+          "status",
+          "paidTxHash",
+          "createdAt",
+          "paidAt"
+        ],
+        "description": "One row of the commission ledger \u2014 what the merchant owes a partner for an attributed sale. Non-custodial: the merchant pays it out from their own wallet. Accrual is idempotent per (payment, affiliate).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "afc_01HZ\u2026"
+          },
+          "affiliateId": {
+            "type": "string"
+          },
+          "paymentId": {
+            "type": "string",
+            "description": "The confirmed sale this commission accrued on."
+          },
+          "saleAmountMinor": {
+            "type": "integer",
+            "description": "Sale amount in minor units (cents)."
+          },
+          "commissionMinor": {
+            "type": "integer",
+            "description": "Current owed commission in minor units \u2014 reduced in place if the sale is partially refunded. This is what the merchant pays."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paying",
+              "paid",
+              "void"
+            ],
+            "description": "`pending` \u2192 payable; `paying` = a built payout is in flight (recover via release_payout); `paid` = merchant settled it; `void` = reversed/canceled."
+          },
+          "paidTxHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "On-chain hash of the merchant's payout transfer, once marked paid."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "CommissionPayout": {
+        "type": "object",
+        "required": [
+          "commissionId",
+          "chain",
+          "token",
+          "recipient",
+          "amountMinor",
+          "unsignedTx"
+        ],
+        "description": "The unsigned ERC-20 transfer the merchant signs from their own wallet to pay a partner (non-custodial \u2014 OpenSettle never moves funds, exactly like a refund). The rail is derived from the originating sale's payment. EVM-only; for Solana/Tron the merchant pays out manually and marks paid. Building this claims the commission `pending \u2192 paying`.",
+        "properties": {
+          "commissionId": {
+            "type": "string"
+          },
+          "chain": {
+            "$ref": "#/components/schemas/ChainId"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenSymbol"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "The affiliate's checksummed payout address."
+          },
+          "amountMinor": {
+            "type": "integer",
+            "description": "Commission to pay, in minor units (cents)."
+          },
+          "unsignedTx": {
+            "type": "object",
+            "required": [
+              "to",
+              "data",
+              "value",
+              "chainId",
+              "tokenAddress",
+              "recipient",
+              "amountBaseUnits"
+            ],
+            "description": "The unsigned EVM transaction envelope to sign + broadcast (same shape as a refund envelope).",
+            "properties": {
+              "to": {
+                "type": "string",
+                "description": "ERC-20 contract address (`tx.to`)."
+              },
+              "data": {
+                "type": "string",
+                "description": "`0x\u2026` encoded calldata for `transfer(recipient, amountBaseUnits)`."
+              },
+              "value": {
+                "type": "string",
+                "enum": [
+                  "0"
+                ],
+                "description": "Native value attached; always \"0\" for ERC-20 transfers."
+              },
+              "chainId": {
+                "type": "integer",
+                "description": "EIP-155 chain id the wallet must sign for."
+              },
+              "tokenAddress": {
+                "type": "string",
+                "description": "Canonical checksummed ERC-20 contract address (duplicate of `to`)."
+              },
+              "recipient": {
+                "type": "string",
+                "description": "Canonical checksummed recipient address."
+              },
+              "amountBaseUnits": {
+                "type": "string",
+                "description": "Amount as a decimal string in token base units (e.g. 6-dec for USDC)."
+              }
+            }
+          }
+        }
+      },
+      "Referral": {
+        "type": "object",
+        "required": [
+          "id",
+          "refereeWorkspaceId",
+          "status",
+          "rewardMinor",
+          "createdAt",
+          "completedAt"
+        ],
+        "description": "A merchant-to-merchant referral the calling workspace drove (it is the referrer).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "ref_01HZ\u2026"
+          },
+          "refereeWorkspaceId": {
+            "type": "string",
+            "description": "The workspace that signed up using this workspace's referral code."
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending` until the referred workspace qualifies, then a completed state. Reward auto-grant is not yet wired, so `rewardMinor` stays 0."
+          },
+          "rewardMinor": {
+            "type": "integer",
+            "description": "Earned credit for this referral in minor units (currently always 0 \u2014 reward grant not yet wired)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "ReferralOverview": {
+        "type": "object",
+        "required": [
+          "code",
+          "url",
+          "rewardMinor",
+          "summary",
+          "data"
+        ],
+        "description": "The calling workspace's own referral code, shareable link, the standing per-referral reward, and its referral history.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "This workspace's referral code (auto-allocated on first read)."
+          },
+          "url": {
+            "type": "string",
+            "description": "Absolute shareable referral URL (`${SITE}/?ref=<code>`)."
+          },
+          "rewardMinor": {
+            "type": "integer",
+            "description": "The standing reward per completed referral, in minor units."
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "total",
+              "pending",
+              "completed",
+              "earnedMinor"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "earnedMinor": {
+                "type": "integer",
+                "description": "Sum of rewardMinor over completed referrals."
+              }
+            }
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Referral"
+            }
+          }
+        }
+      },
+      "PublicSignupProgram": {
+        "type": "object",
+        "required": [
+          "merchantName",
+          "defaultCommissionBps",
+          "subscriptionCommission"
+        ],
+        "description": "The minimal, PUBLIC program info an affiliate self-signup landing page needs \u2014 just enough for a partner to decide to apply. Deliberately leaks no workspace ids, counters, or private config.",
+        "properties": {
+          "merchantName": {
+            "type": "string",
+            "description": "The merchant's display name."
+          },
+          "defaultCommissionBps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Default commission in basis points."
+          },
+          "subscriptionCommission": {
+            "type": "string",
+            "enum": [
+              "first",
+              "recurring"
+            ]
           }
         }
       }
@@ -1052,7 +2130,7 @@
         }
       },
       "RateLimited": {
-        "description": "Too many requests — see `Retry-After` header",
+        "description": "Too many requests \u2014 see `Retry-After` header",
         "content": {
           "application/json": {
             "schema": {
@@ -1070,7 +2148,7 @@
         }
       },
       "BadRequest": {
-        "description": "Validation failure (`code: invalid_request`) — `param` points at the offending field.",
+        "description": "Validation failure (`code: invalid_request`) \u2014 `param` points at the offending field.",
         "content": {
           "application/json": {
             "schema": {
@@ -1080,7 +2158,7 @@
         }
       },
       "Conflict": {
-        "description": "State conflict (`code: conflict`) — usually a uniqueness collision.",
+        "description": "State conflict (`code: conflict`) \u2014 usually a uniqueness collision.",
         "content": {
           "application/json": {
             "schema": {
@@ -1126,7 +2204,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Required on every money-adjacent POST. Replaying with the same key returns the original response byte-for-byte. Different body + same key → 409."
+        "description": "Required on every money-adjacent POST. Replaying with the same key returns the original response byte-for-byte. Different body + same key \u2192 409."
       }
     }
   },
@@ -1831,7 +2909,8 @@
                       "week",
                       "month",
                       "year"
-                    ]
+                    ],
+                    "description": "Base form (e.g. \"month\"); the Subscription view returns the adverb form \"monthly\"."
                   },
                   "metadata": {
                     "type": "object",
@@ -2280,7 +3359,7 @@
                 "required": [
                   "mode"
                 ],
-                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). For mode `payment` the customer is OPTIONAL — omit both to create a GUEST checkout (scan-and-pay, no email), e.g. a reusable payment link; the response `customerId` is then null. Mode `subscription` always requires a customer. Mode `payment` takes exactly one of `invoiceId`, a one-time `priceId`, or an ad-hoc `amount` (the latter two also need a chain + token); mode `subscription` requires a recurring `priceId` and a chain/token.",
+                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). For mode `payment` the customer is OPTIONAL \u2014 omit both to create a GUEST checkout (scan-and-pay, no email), e.g. a reusable payment link; the response `customerId` is then null. Mode `subscription` always requires a customer. Mode `payment` takes exactly one of `invoiceId`, a one-time `priceId`, or an ad-hoc `amount` (the latter two also need a chain + token); mode `subscription` requires a recurring `priceId` and a chain/token.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -2309,7 +3388,7 @@
                   "amount": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Ad-hoc one-time charge in MINOR units (cents). mode=payment only — alternative to invoiceId / a one-time priceId."
+                    "description": "Ad-hoc one-time charge in MINOR units (cents). mode=payment only \u2014 alternative to invoiceId / a one-time priceId."
                   },
                   "currency": {
                     "type": "string",
@@ -2345,6 +3424,18 @@
                   "metadata": {
                     "type": "object",
                     "additionalProperties": true
+                  },
+                  "couponCode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "Merchant coupon code, applied + validated server-side. One-time `payment` mode only (rejected on subscription/invoice checkouts); rejected if invalid/expired or if it would drop the charge below the $0.50 floor. On success `amountMinor` becomes the discounted charge and the response carries couponCode / couponDiscountMinor / originalAmountMinor."
+                  },
+                  "affiliateCode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "Affiliate/partner code (the value from a `?aff=CODE` link) to attribute commission on this checkout's confirmed sale. Best-effort: an unknown code is ignored and never blocks the sale. Accrues commission only when the workspace's affiliate program is enabled."
                   }
                 }
               }
@@ -2404,13 +3495,104 @@
         }
       }
     },
+    "/v1/workspaces/{workspaceId}/checkouts/test_payment": {
+      "post": {
+        "tags": [
+          "checkouts"
+        ],
+        "summary": "Send a test payment (TEST MODE ONLY)",
+        "description": "One-call sandbox helper for validating your integration end-to-end: creates a throwaway $1 test checkout on your first verified test settlement wallet and immediately simulates a confirmed payment on it, firing the full confirm\u2192settle\u2192webhook fanout (checkout \u2192 succeeded + the payment.confirmed webhook) WITHOUT any on-chain transfer. HARD-gated to test-mode workspaces (sk_test_ keys): 404 on a live workspace. Requires a verified test settlement wallet (400 otherwise). Requires the `developer` role.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The synthesized confirmed payment + the test checkout id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "payment": {
+                      "$ref": "#/components/schemas/Payment"
+                    },
+                    "checkoutId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/checkouts/{id}/simulate_payment": {
+      "post": {
+        "tags": [
+          "checkouts"
+        ],
+        "summary": "Simulate a payment (TEST MODE ONLY)",
+        "description": "Sandbox helper: synthesizes a confirmed payment for this checkout and runs the FULL confirm\u2192settle\u2192webhook fanout (checkout \u2192 succeeded, invoice \u2192 paid, subscription activation, and the `payment.confirmed` webhook), WITHOUT any on-chain transfer. Use it to validate your webhook handler + grant-access logic end-to-end without spending real funds. HARD-gated to test-mode workspaces (sk_test_ keys): on a live workspace it returns 404. Requires the `developer` role.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The synthesized confirmed payment (wrapped as `{ payment: Payment }`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "payment": {
+                      "$ref": "#/components/schemas/Payment"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspaceId}/payment_links": {
       "post": {
         "tags": [
           "payment_links"
         ],
         "summary": "Create a reusable payment link",
-        "description": "A shareable link whose `url` (`https://opensettle.io/pay/<token>`) spawns a fresh checkout on every visit — built for scan-and-pay, embeds, or \"pay what you want\". Supply exactly ONE amount source: a fixed `amount`, a saved one-time `priceId`, or `openAmount: true` to let the buyer name the amount (bounded by `minAmount`/`maxAmount`). Buyers check out as guests — no email required. The 201 body wraps the resource as `{ \"paymentLink\": PaymentLink }`. Requires the `developer` role.",
+        "description": "A shareable link whose `url` (`https://opensettle.io/pay/<token>`) spawns a fresh checkout on every visit \u2014 built for scan-and-pay, embeds, or \"pay what you want\". Supply exactly ONE amount source: a fixed `amount`, a saved `priceId` (one-time, or a recurring price to make a Subscribe link), or `openAmount: true` to let the buyer name the amount (bounded by `minAmount`/`maxAmount`). One-time and open-amount links are guest checkouts with no email required; a recurring-price Subscribe link collects the buyer email so each visitor gets their own subscription. The 201 body wraps the resource as `{ \"paymentLink\": PaymentLink }`. Requires the `developer` role.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -2429,7 +3611,7 @@
                   "chain",
                   "token"
                 ],
-                "description": "Exactly one amount source: `amount` (fixed), `priceId` (saved one-time price), or `openAmount: true`. `description` is required for a fixed `amount` or an open-amount link.",
+                "description": "Exactly one amount source: `amount` (fixed), `priceId` (saved price \u2014 one-time charges once, a recurring price makes a Subscribe link), or `openAmount: true`. `description` is required for a fixed `amount` or an open-amount link.",
                 "properties": {
                   "amount": {
                     "type": "integer",
@@ -2438,7 +3620,7 @@
                   },
                   "priceId": {
                     "type": "string",
-                    "description": "A saved one-time price to charge."
+                    "description": "A saved price to charge. A one-time price charges once; a recurring price makes the link a reusable Subscribe link \u2014 the buyer enters an email and each visitor gets their own subscription."
                   },
                   "openAmount": {
                     "type": "boolean",
@@ -2881,7 +4063,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Body is optional — server defaults to `mode: at_period_end` with no reason.",
+                "description": "Body is optional \u2014 server defaults to `mode: at_period_end` with no reason.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -2959,7 +4141,7 @@
                       "at_period_end"
                     ],
                     "default": "at_period_end",
-                    "description": "How this swap is billed. Only `at_period_end` (the default) is implemented: the new price takes effect at the next billing cycle, with no mid-cycle credit or charge, and is echoed on the `subscription.plan_changed` event. `immediately` is **not implemented** — passing it is rejected with `400 invalid_request` (no proration credits/charges exist yet) rather than silently ignored, so you can't be misled into thinking a mid-cycle charge fired. The enum keeps `immediately` wire-compatible for when proration billing ships."
+                    "description": "How this swap is billed. Only `at_period_end` (the default) is implemented: the new price takes effect at the next billing cycle, with no mid-cycle credit or charge, and is echoed on the `subscription.plan_changed` event. `immediately` is **not implemented** \u2014 passing it is rejected with `400 invalid_request` (no proration credits/charges exist yet) rather than silently ignored, so you can't be misled into thinking a mid-cycle charge fired. The enum keeps `immediately` wire-compatible for when proration billing ships."
                   }
                 }
               }
@@ -3023,7 +4205,7 @@
           "wallets"
         ],
         "summary": "Register a new settlement wallet (issues challenge)",
-        "description": "Creates the wallet row in `unverified` state and returns a one-time challenge. Sign the challenge with the wallet's key, then POST to `/wallets/{id}/verify` with the signature. Requires a DASHBOARD SESSION + step-up auth — NOT an API key (a Bearer token returns 401). Add settlement wallets in the dashboard.",
+        "description": "Creates the wallet row in `unverified` state and returns a one-time challenge. Sign the challenge with the wallet's key, then POST to `/wallets/{id}/verify` with the signature. Requires a DASHBOARD SESSION + step-up auth \u2014 NOT an API key (a Bearer token returns 401). Add settlement wallets in the dashboard.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3256,7 +4438,7 @@
           "wallets"
         ],
         "summary": "Submit a signed challenge to verify wallet ownership",
-        "description": "Signature wire-formats per chain — EVM: `0x…` ERC-191 personal-sign hex; Solana: base58 Ed25519 (64 bytes); Tron: `0x…` TIP-191 hex. Challenge is consumed atomically before signature verify, so a replay can't succeed even if you POST the same nonce twice. Step-up auth required.",
+        "description": "Signature wire-formats per chain \u2014 EVM: `0x\u2026` ERC-191 personal-sign hex; Solana: base58 Ed25519 (64 bytes); Tron: `0x\u2026` TIP-191 hex. Challenge is consumed atomically before signature verify, so a replay can't succeed even if you POST the same nonce twice. Step-up auth required.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3291,7 +4473,7 @@
                     "minLength": 60,
                     "maxLength": 200,
                     "pattern": "^(0x[0-9a-fA-F]+|[1-9A-HJ-NP-Za-km-z]+)$",
-                    "description": "Hex (0x…) for EVM/Tron, base58 for Solana Ed25519."
+                    "description": "Hex (0x\u2026) for EVM/Tron, base58 for Solana Ed25519."
                   }
                 }
               }
@@ -3504,10 +4686,21 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
+                    "maxItems": 100,
                     "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
+                      "oneOf": [
+                        {
+                          "enum": [
+                            "*"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/components/schemas/WebhookEventType"
+                        }
+                      ]
+                    },
+                    "description": "`[\"*\"]` or specific WebhookEventType values. Unknown names are rejected."
                   },
                   "status": {
                     "type": "string",
@@ -3586,7 +4779,7 @@
           "webhooks"
         ],
         "summary": "Rotate the signing secret",
-        "description": "Returns a new plaintext signing secret. There is NO grace window — the previous secret stops verifying immediately, so deploy the new secret to your endpoint as you rotate. (The webhook retry curve gives you time to redeploy before deliveries are dropped.)",
+        "description": "Returns a new plaintext signing secret. There is NO grace window \u2014 the previous secret stops verifying immediately, so deploy the new secret to your endpoint as you rotate. (The webhook retry curve gives you time to redeploy before deliveries are dropped.)",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3616,7 +4809,7 @@
                     },
                     "signingSecret": {
                       "type": "string",
-                      "example": "whsec_…"
+                      "example": "whsec_\u2026"
                     }
                   }
                 }
@@ -3667,6 +4860,49 @@
                 }
               }
             }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/rails": {
+      "get": {
+        "tags": [
+          "rails"
+        ],
+        "summary": "List settlement rails (readiness)",
+        "description": "Returns the distinct (chain, token) pairs the workspace has a verified settlement wallet for. A rail listed here is exactly a rail a checkout can be created + paid on without a 422. Empty `data` means the workspace cannot settle yet \u2014 add and verify a wallet in the dashboard. This endpoint, unlike `/wallets`, is API-key readable.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified settlement rails",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Rail"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -3932,7 +5168,7 @@
           "webhooks"
         ],
         "summary": "Register a webhook endpoint",
-        "description": "The `signingSecret` is returned exactly once. Verify webhook payloads by HMAC-SHA256 of `${timestamp}.${body}` against this secret; the signature header is `x-opensettle-signature: t=…,v1=…`.",
+        "description": "The `signingSecret` is returned exactly once. Verify webhook payloads by HMAC-SHA256 of `${timestamp}.${body}` against this secret; the signature header is `x-opensettle-signature: t=\u2026,v1=\u2026`.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3964,14 +5200,24 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
+                    "maxItems": 100,
                     "items": {
-                      "type": "string",
-                      "minLength": 1
+                      "oneOf": [
+                        {
+                          "enum": [
+                            "*"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/components/schemas/WebhookEventType"
+                        }
+                      ]
                     },
                     "default": [
                       "*"
                     ],
-                    "description": "`[\"*\"]` for all events."
+                    "description": "`[\"*\"]` for all events, or specific WebhookEventType values. Unknown names are rejected."
                   }
                 }
               }
@@ -3991,7 +5237,7 @@
                     },
                     "signingSecret": {
                       "type": "string",
-                      "example": "whsec_…"
+                      "example": "whsec_\u2026"
                     }
                   }
                 }
@@ -4117,6 +5363,810 @@
           },
           "422": {
             "description": "Cannot replay against a disabled endpoint"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliate_program": {
+      "get": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Retrieve the affiliate-program config",
+        "description": "Requires `developer` role (the `restricted` API-key permission) \u2014 `signupSlug` + `couponId` are config, not viewer-readable. A never-configured program returns the defaults (disabled, 0 bps).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The program config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "program": {
+                      "$ref": "#/components/schemas/AffiliateProgram"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Update the affiliate-program config",
+        "description": "Requires `admin` role (the `full` API-key permission). All fields optional \u2014 only the keys present are changed. Enabling the program for the first time allocates a `signupSlug`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "defaultCommissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "subscriptionCommission": {
+                    "type": "string",
+                    "enum": [
+                      "first",
+                      "recurring"
+                    ]
+                  },
+                  "couponId": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "nullable": true
+                  },
+                  "autoApprove": {
+                    "type": "boolean",
+                    "description": "When true, public self-signup applicants are auto-promoted to `active` (and start earning); when false (default) they land as `pending`."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated program config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "program": {
+                      "$ref": "#/components/schemas/AffiliateProgram"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliates": {
+      "get": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "List affiliates",
+        "description": "Requires `developer` role \u2014 partner email + payout wallet are PII, not viewer-readable.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All affiliates for the workspace (`{ data: Affiliate[] }`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Affiliate"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Register an affiliate",
+        "description": "Requires `developer` role. `code` is optional \u2014 auto-generated (unique per workspace) when omitted.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                    "description": "URL-safe attribution code for the `?aff=CODE` link. Auto-generated if omitted."
+                  },
+                  "commissionBps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "nullable": true,
+                    "description": "Per-affiliate override; null = inherit the program default."
+                  },
+                  "payoutWallet": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "nullable": true
+                  },
+                  "payoutChain": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/ChainId"
+                      }
+                    ],
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Affiliate created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "affiliate": {
+                      "$ref": "#/components/schemas/Affiliate"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "An affiliate with that code already exists in this workspace"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliates/{id}": {
+      "delete": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Disable (remove / reject) an affiliate",
+        "description": "Requires `developer` role. Sets the affiliate's status to `disabled` \u2014 also used to reject a `pending` self-signup applicant.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliates/{id}/approve": {
+      "post": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Approve a pending self-signup applicant",
+        "description": "Requires `developer` role. Promotes a `pending` applicant to `active` so they begin earning. Rejecting is the DELETE above (\u2192 `disabled`).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved (\u2192 active)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliate_commissions": {
+      "get": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "List commissions (the payout ledger)",
+        "description": "Requires `developer` role \u2014 the commission ledger is the merchant's payout liability, not viewer-readable.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All commissions for the workspace (`{ data: AffiliateCommission[] }`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AffiliateCommission"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliate_commissions/{id}/mark_paid": {
+      "post": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Mark a commission as paid",
+        "description": "Requires `admin` role. Settles a `pending` (manual/out-of-band) or `paying` (built-tx flow) commission \u2192 `paid`, optionally recording the payout tx hash.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "txHash": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "On-chain hash of the payout transfer."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The commission, now paid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "commission": {
+                      "$ref": "#/components/schemas/AffiliateCommission"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Commission not in a payable (pending/paying) state"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliate_commissions/{id}/payout": {
+      "post": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Build a non-custodial commission payout",
+        "description": "Requires `admin` role. Returns the unsigned ERC-20 transfer the merchant signs from their own wallet (OpenSettle never moves funds). The rail is derived from the originating sale's payment; EVM-only. Building it claims the commission `pending \u2192 paying`; after broadcasting, POST the hash to `mark_paid` (or `release_payout` to revert).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unsigned payout envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "payout": {
+                      "$ref": "#/components/schemas/CommissionPayout"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot build a payout tx for this chain/token (e.g. non-EVM) \u2014 pay manually and mark paid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Commission not pending, affiliate has no payout wallet, or the wallet's chain differs from the sale's chain"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/affiliate_commissions/{id}/release_payout": {
+      "post": {
+        "tags": [
+          "affiliates"
+        ],
+        "summary": "Release a claimed payout back to pending",
+        "description": "Requires `admin` role. Reverts a `paying` commission (a built-but-unsigned payout the merchant abandoned) back to `pending` so it can be paid later \u2014 without it the row strands in `paying`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Released (\u2192 pending)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/referrals": {
+      "get": {
+        "tags": [
+          "referrals"
+        ],
+        "summary": "Retrieve this workspace's referral overview",
+        "description": "The calling workspace's own referral code (auto-allocated on first read), shareable link, standing reward, and its referral history. Any workspace member may read it.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Referral overview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/referrals/apply": {
+      "post": {
+        "tags": [
+          "referrals"
+        ],
+        "summary": "Apply another merchant's referral code to this workspace",
+        "description": "Requires `admin` role. Records a `pending` referral with THIS workspace as the referee \u2014 e.g. during onboarding. Self-referral, an unknown code, and an already-referred workspace are all rejected.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "The referrer's referral code."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Referral recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "referral": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "status"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown code or self-referral (`code: invalid_request`)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "This workspace has already used a referral code"
+          }
+        }
+      }
+    },
+    "/v1/affiliate-signup/{slug}": {
+      "get": {
+        "tags": [
+          "affiliate_signup"
+        ],
+        "summary": "Public affiliate self-signup info",
+        "description": "PUBLIC (no auth), rate-limited. Returns only the merchant name + commission terms a partner needs to decide to apply on the merchant's `/a/<slug>` page \u2014 never workspace ids, counters, or private config. Returns 404 (not 400) for an unknown / malformed / disabled-program slug so a scanner can't tell them apart.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public program info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "program": {
+                      "$ref": "#/components/schemas/PublicSignupProgram"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "affiliate_signup"
+        ],
+        "summary": "Submit a public affiliate self-signup application",
+        "description": "PUBLIC (no auth), rate-limited per-slug AND per-IP (it's an unauthenticated write that can create an `affiliates` row). The applicant lands as `pending` (or `active` when the program auto-approves) and a `pending` applicant earns nothing until the merchant approves. Deduped by email. `code` is NOT applicant-supplied \u2014 it is server-generated. Returns only `{ status }` \u2014 no code or PII leak.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "payoutWallet": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "nullable": true,
+                    "description": "Optional \u2014 the partner can add it later; required to be paid out."
+                  },
+                  "payoutChain": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/ChainId"
+                      }
+                    ],
+                    "nullable": true,
+                    "description": "Required when payoutWallet is set."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Application accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "active"
+                      ],
+                      "description": "`active` when the program auto-approves, else `pending`. A returning applicant gets their current status."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Unknown / malformed / disabled-program slug"
+          },
+          "422": {
+            "description": "Program isn't accepting new applications (capacity reached)"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
           }
         }
       }
