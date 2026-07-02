@@ -2,7 +2,7 @@
   "name": "opensettle-openapi",
   "private": true,
   "type": "module",
-  "description": "Tooling for the OpenSettle OpenAPI 3.1 spec snapshot. Not a runtime package.",
+  "description": "Tooling for the OpenSettle OpenAPI 3.0 spec snapshot. Not a runtime package.",
   "scripts": {
     "regenerate": "node scripts/regenerate.mjs"
   },
