@@ -26,7 +26,10 @@ async function loadSpec() {
 
 const spec = await loadSpec();
 
-if (spec.openapi !== "3.1.0") {
+// Accept any OpenAPI 3.0.x / 3.1.x document. The served spec is authored as
+// 3.0.3 (it uses `nullable`, a 3.0-only keyword removed in 3.1); an exact
+// "3.1.0" check silently broke YAML regeneration and let the mirror drift.
+if (!/^3\.[01]\.\d+$/.test(spec.openapi ?? "")) {
   throw new Error(`unexpected openapi version: ${spec.openapi}`);
 }
 const pathCount = Object.keys(spec.paths ?? {}).length;

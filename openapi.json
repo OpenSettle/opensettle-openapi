@@ -2,12 +2,16 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenSettle API",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Non-custodial Web3 payments API. Stablecoin (USDC, USDT) settlement on the EVM chains Base, Ethereum, Polygon, and Arbitrum. Solana and Tron are implemented at the API + wallet-verification layer (`/wallets` accepts `chain: \"solana\" | \"tron\"`) and the chain reader will detect inbound SPL / TRC-20 deposits to verified wallets, but customer-facing hosted checkout is currently EVM-only. Authenticate with a workspace-scoped Bearer API key (`sk_live_...` or `sk_test_...`). All money amounts are minor units (cents). All times are ISO-8601 UTC strings.",
     "contact": {
       "name": "OpenSettle",
       "url": "https://opensettle.io"
     }
+  },
+  "externalDocs": {
+    "description": "OpenSettle guides, quickstart, and integration docs",
+    "url": "https://opensettle.io/docs"
   },
   "servers": [
     {
@@ -54,15 +58,19 @@
     },
     {
       "name": "wallets",
-      "description": "Merchant settlement wallets. NOTE: these are managed in the OpenSettle dashboard and authenticate with a dashboard SESSION, not an API key \u2014 calling them with an `sk_live_`/`sk_test_` Bearer token returns 401. Add and verify your settlement wallets in the dashboard before going live; the shapes are documented here for reference."
+      "description": "Merchant settlement wallets. NOTE: these are managed in the OpenSettle dashboard and authenticate with a dashboard SESSION, not an API key — calling them with an `sk_live_`/`sk_test_` Bearer token returns 401. Add and verify your settlement wallets in the dashboard before going live; the shapes are documented here for reference."
     },
     {
       "name": "rails",
-      "description": "Settlement readiness. Unlike `wallets` (dashboard-session-only), this IS API-key readable \u2014 a backend can gate on which (chain, token) pairs are actually ready before creating a checkout."
+      "description": "Settlement readiness. Unlike `wallets` (dashboard-session-only), this IS API-key readable — a backend can gate on which (chain, token) pairs are actually ready before creating a checkout."
     },
     {
       "name": "affiliates",
-      "description": "Partner / affiliate program: program config, partners (incl. self-signup applicant approval), and the non-custodial commission ledger the merchant pays out from their own wallet. The whole feature is INERT until the program is enabled. Workspace-scoped endpoints require an API key with `restricted` (developer) or `full` (admin) permission \u2014 partner PII and the payout ledger are never `readonly`/viewer-readable."
+      "description": "Partner / affiliate program: program config, partners (incl. self-signup applicant approval), and the non-custodial commission ledger the merchant pays out from their own wallet. The whole feature is INERT until the program is enabled. Workspace-scoped endpoints require an API key with `restricted` (developer) or `full` (admin) permission — partner PII and the payout ledger are never `readonly`/viewer-readable."
+    },
+    {
+      "name": "entitlements",
+      "description": "Access entitlements — \"does this user have access to X?\" in one call. An active/trialing subscription on a price with an `entitlementKey` grants it (derived live); merchants can also grant/revoke manually. Workspace-scoped; checks are API-key readable, grant/revoke require `restricted` (developer) or `full` (admin)."
     },
     {
       "name": "referrals",
@@ -70,7 +78,7 @@
     },
     {
       "name": "affiliate_signup",
-      "description": "PUBLIC, unauthenticated, rate-limited affiliate self-signup \u2014 the partner-facing front door for a merchant's `/a/<slug>` page. No API key."
+      "description": "PUBLIC, unauthenticated, rate-limited affiliate self-signup — the partner-facing front door for a merchant's `/a/<slug>` page. No API key."
     },
     {
       "name": "health",
@@ -82,8 +90,8 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "sk_{live|test}_\u2026",
-        "description": "Workspace-scoped API key. The key's scope determines which workspace it operates against; the URL `:workspaceId` must match. Permissions: `readonly` \u2192 viewer, `restricted` \u2192 developer, `full` \u2192 admin."
+        "bearerFormat": "sk_{live|test}_…",
+        "description": "Workspace-scoped API key. The key's scope determines which workspace it operates against; the URL `:workspaceId` must match. Permissions: `readonly` → viewer, `restricted` → developer, `full` → admin."
       }
     },
     "schemas": {
@@ -127,7 +135,7 @@
           },
           "request_id": {
             "type": "string",
-            "example": "req_01HZ\u2026"
+            "example": "req_01HZ…"
           },
           "metadata": {
             "type": "object",
@@ -153,7 +161,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "cus_01HZ\u2026"
+            "example": "cus_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -161,6 +169,11 @@
           "email": {
             "type": "string",
             "format": "email"
+          },
+          "appUserId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Your own user identifier for this customer. Set it on create/update, then resolve a customer (and check entitlements) by the id your app already holds. Unique per workspace."
           },
           "name": {
             "type": "string",
@@ -189,7 +202,7 @@
           "lifetimeValue": {
             "type": "integer",
             "deprecated": true,
-            "description": "Legacy materialized counter \u2014 a never-written cache that is always 0. Do NOT use; read `lifetimeValueMinor` for realized lifetime volume."
+            "description": "Legacy materialized counter — a never-written cache that is always 0. Do NOT use; read `lifetimeValueMinor` for realized lifetime volume."
           },
           "lifetimeValueMinor": {
             "type": "integer",
@@ -217,7 +230,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "pay_01HZ\u2026"
+            "example": "pay_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -296,7 +309,7 @@
           "txHash": {
             "type": "string",
             "nullable": true,
-            "description": "On-chain settlement tx hash. Null until observed \u2014 never substitute the payment id."
+            "description": "On-chain settlement tx hash. Null until observed — never substitute the payment id."
           },
           "blockNumber": {
             "type": "integer",
@@ -317,7 +330,7 @@
           },
           "refundedTotalMinor": {
             "type": "integer",
-            "description": "Cumulative amount refunded to the customer (partial + full), in minor units. Unlike the per-attempt refundAmountMinor, this stays accurate on a still-`confirmed` partially-refunded payment \u2014 gate \"how much is still refundable?\" (amountMinor \u2212 this) and reconcile net retained on it."
+            "description": "Cumulative amount refunded to the customer (partial + full), in minor units. Unlike the per-attempt refundAmountMinor, this stays accurate on a still-`confirmed` partially-refunded payment — gate \"how much is still refundable?\" (amountMinor − this) and reconcile net retained on it."
           },
           "refundRecipient": {
             "type": "string",
@@ -334,7 +347,7 @@
             "type": "string",
             "format": "date-time",
             "nullable": true,
-            "description": "When the refund confirmed on-chain (status \u2192 refunded)."
+            "description": "When the refund confirmed on-chain (status → refunded)."
           },
           "refundReason": {
             "type": "string",
@@ -366,7 +379,7 @@
           },
           "tokenDecimals": {
             "type": "integer",
-            "description": "Canonical on-chain decimals for this (chain, token), from OpenSettle's frozen token registry. Interpret tokenAmountBase with THIS \u2014 human amount = tokenAmountBase / 10^tokenDecimals; minor units (cents) = tokenAmountBase / 10^(tokenDecimals-2). Read it instead of hardcoding a per-token table: a hardcoded 6 silently accepts a ~1e12x underpayment the day a token settles at 18 decimals."
+            "description": "Canonical on-chain decimals for this (chain, token), from OpenSettle's frozen token registry. Interpret tokenAmountBase with THIS — human amount = tokenAmountBase / 10^tokenDecimals; minor units (cents) = tokenAmountBase / 10^(tokenDecimals-2). Read it instead of hardcoding a per-token table: a hardcoded 6 silently accepts a ~1e12x underpayment the day a token settles at 18 decimals."
           },
           "settledUsdMinor": {
             "type": "integer",
@@ -375,16 +388,16 @@
           },
           "fullySettled": {
             "type": "boolean",
-            "description": "True when the received on-chain amount met or exceeded what the payment was expected to settle. A normal exact match is true; a close-match row is true only when received \u2265 expected. Gate access on THIS instead of trusting status === \"confirmed\" alone \u2014 a dust-band underpayment can auto-credit yet not be fully settled."
+            "description": "True when the received on-chain amount met or exceeded what the payment was expected to settle. A normal exact match is true; a close-match row is true only when received ≥ expected. Gate access on THIS instead of trusting status === \"confirmed\" alone — a dust-band underpayment can auto-credit yet not be fully settled."
           },
           "unmatchedInbound": {
             "type": "boolean",
-            "description": "True when an inbound transfer matched no pending checkout \u2014 credit manually or refund. Pair with closeMatchCheckoutId."
+            "description": "True when an inbound transfer matched no pending checkout — credit manually or refund. Pair with closeMatchCheckoutId."
           },
           "closeMatchCheckoutId": {
             "type": "string",
             "nullable": true,
-            "description": "A pending checkout whose target was within \u00b15% of an unmatched inbound transfer \u2014 the buyer's likely intent."
+            "description": "A pending checkout whose target was within ±5% of an unmatched inbound transfer — the buyer's likely intent."
           },
           "expectedTokenAmountBase": {
             "type": "string",
@@ -413,7 +426,7 @@
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Merchant-supplied metadata, snapshotted from the originating checkout at payment creation, so you can recover your account binding (e.g. metadata.user_id) from the Payment without a checkout re-fetch. NOTE: the ID-only payment events (payment.confirmed / payment.pending / payment.failed) deliver just paymentId + checkoutId \u2014 GET the payment (or read data.payment on payment.refunded) to read this."
+            "description": "Merchant-supplied metadata, snapshotted from the originating checkout at payment creation, so you can recover your account binding (e.g. metadata.user_id) from the Payment without a checkout re-fetch. NOTE: the ID-only payment events (payment.confirmed / payment.pending / payment.failed) deliver just paymentId + checkoutId — GET the payment (or read data.payment on payment.refunded) to read this."
           }
         }
       },
@@ -439,10 +452,10 @@
             "items": {
               "oneOf": [
                 {
+                  "type": "string",
                   "enum": [
                     "*"
-                  ],
-                  "type": "string"
+                  ]
                 },
                 {
                   "$ref": "#/components/schemas/WebhookEventType"
@@ -464,7 +477,7 @@
           "consecutiveFailures": {
             "type": "integer",
             "minimum": 0,
-            "description": "Consecutive failed deliveries; resets on any success. 20 \u2192 auto-disabled."
+            "description": "Consecutive failed deliveries; resets on any success. 20 → auto-disabled."
           },
           "rotationGraceUntil": {
             "type": "string",
@@ -541,6 +554,8 @@
           "customer.created",
           "customer.deleted",
           "customer.updated",
+          "entitlement.granted",
+          "entitlement.revoked",
           "invoice.created",
           "invoice.paid",
           "invoice.past_due",
@@ -586,11 +601,11 @@
           "created_at",
           "data"
         ],
-        "description": "The ONE webhook envelope OpenSettle emits. The event name is always at `type` (never `event`/`eventType`) and the resource is always at `data` (never `object`/`payload`/`data.object`). The schema of `data` is selected by `type` \u2014 see the WebhookData_* schemas. SIGNATURE: every delivery carries `X-OpenSettle-Signature: t=<unix>,v1=<hex>` where `v1` is the HMAC-SHA256 of `${t}.${rawBody}` using the endpoint's signing secret; verify it with a constant-time compare AND reject timestamps outside a \u00b1300-second tolerance (the SDK `verifyWebhook` default) to bound replay.",
+        "description": "The ONE webhook envelope OpenSettle emits. The event name is always at `type` (never `event`/`eventType`) and the resource is always at `data` (never `object`/`payload`/`data.object`). The schema of `data` is selected by `type` — see the WebhookData_* schemas. SIGNATURE: every delivery carries `X-OpenSettle-Signature: t=<unix>,v1=<hex>` where `v1` is the HMAC-SHA256 of `${t}.${rawBody}` using the endpoint's signing secret; verify it with a constant-time compare AND reject timestamps outside a ±300-second tolerance (the SDK `verifyWebhook` default) to bound replay.",
         "properties": {
           "id": {
             "type": "string",
-            "example": "evt_01H\u2026"
+            "example": "evt_01H…"
           },
           "type": {
             "$ref": "#/components/schemas/WebhookEventType"
@@ -670,7 +685,7 @@
         "required": [
           "paymentId"
         ],
-        "description": "payment.pending / payment.confirmed / payment.failed. `payment.confirmed` carries the authoritative settlement scalars below (paymentId, checkoutId, status, amountMinor, chain, token, fullySettled, settledUsdMinor) so you can gate access straight off the signed event without a GET. Full merchant metadata stays OFF the event (size/PII) \u2014 GET /v1/payments/{id} for that, or read data.payment on payment.refunded.",
+        "description": "payment.pending / payment.confirmed / payment.failed. `payment.confirmed` carries the authoritative settlement scalars below (paymentId, checkoutId, status, amountMinor, chain, token, fullySettled, settledUsdMinor) so you can gate access straight off the signed event without a GET. Full merchant metadata stays OFF the event (size/PII) — GET /v1/payments/{id} for that, or read data.payment on payment.refunded.",
         "properties": {
           "paymentId": {
             "type": "string"
@@ -710,7 +725,7 @@
           },
           "fullySettled": {
             "type": "boolean",
-            "description": "On payment.confirmed: true when the received on-chain amount met/exceeded the expected target. Gate access on THIS \u2014 a dust-band underpayment can auto-credit yet read false."
+            "description": "On payment.confirmed: true when the received on-chain amount met/exceeded the expected target. Gate access on THIS — a dust-band underpayment can auto-credit yet read false."
           },
           "settledUsdMinor": {
             "type": "integer",
@@ -1026,7 +1041,7 @@
         "required": [
           "id"
         ],
-        "description": "allowance.depleted \u2014 the allowance resource (same shape as the allowances API).",
+        "description": "allowance.depleted — the allowance resource (same shape as the allowances API).",
         "properties": {
           "id": {
             "type": "string"
@@ -1193,7 +1208,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "prod_01HZ\u2026"
+            "example": "prod_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1224,7 +1239,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "price_01HZ\u2026"
+            "example": "price_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1255,6 +1270,11 @@
           "active": {
             "type": "boolean"
           },
+          "entitlementKey": {
+            "type": "string",
+            "nullable": true,
+            "description": "Access key an active/trialing subscription on this price grants. Set it at create to make the plan grant an entitlement checkable via `POST /entitlements/check`."
+          },
           "metadata": {
             "type": "object",
             "nullable": true,
@@ -1263,6 +1283,74 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "Entitlement": {
+        "type": "object",
+        "description": "A manual entitlement grant (comped / enterprise / non-subscription access). Subscription-derived entitlements are NOT rows — they're computed live by the check endpoint.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "ent_01HZ…"
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "example": "pro"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EntitlementCheck": {
+        "type": "object",
+        "description": "Live access decision for a (customer, key). `source` is the winning origin (subscription beats manual) or null when inactive. For an active subscription, `expiresAt` is the current period end (the renewal date).",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "subscription",
+              "manual"
+            ],
+            "nullable": true
+          },
+          "subscriptionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },
@@ -1292,7 +1380,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "in_01HZ\u2026"
+            "example": "in_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1361,7 +1449,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "sub_01HZ\u2026"
+            "example": "sub_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1493,7 +1581,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "chk_01HZ\u2026"
+            "example": "chk_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1529,7 +1617,7 @@
           },
           "amountMinor": {
             "type": "integer",
-            "description": "The actual charged amount in USD cents. When a coupon is applied this is the DISCOUNTED charge, NOT the list price \u2014 reconcile against originalAmountMinor / couponDiscountMinor."
+            "description": "The actual charged amount in USD cents. When a coupon is applied this is the DISCOUNTED charge, NOT the list price — reconcile against originalAmountMinor / couponDiscountMinor."
           },
           "couponCode": {
             "type": "string",
@@ -1587,7 +1675,7 @@
           },
           "hostedUrl": {
             "type": "string",
-            "description": "Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`). Redirect the buyer straight to it \u2014 do NOT prepend an origin. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
+            "description": "Absolute buyer-facing URL (e.g. `https://opensettle.io/checkout/<hostedToken>`). Redirect the buyer straight to it — do NOT prepend an origin. Uses the unguessable hosted-token, not the timestamp-prefixed `id`."
           }
         }
       },
@@ -1597,11 +1685,11 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "plink_01HZ\u2026"
+            "example": "plink_01HZ…"
           },
           "url": {
             "type": "string",
-            "description": "Absolute, reusable buyer-facing URL (e.g. `https://opensettle.io/pay/<token>`). Share or embed it directly \u2014 do NOT prepend an origin."
+            "description": "Absolute, reusable buyer-facing URL (e.g. `https://opensettle.io/pay/<token>`). Share or embed it directly — do NOT prepend an origin."
           },
           "description": {
             "type": "string"
@@ -1663,7 +1751,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "wlt_01HZ\u2026"
+            "example": "wlt_01HZ…"
           },
           "workspaceId": {
             "type": "string"
@@ -1676,7 +1764,7 @@
           },
           "address": {
             "type": "string",
-            "description": "EIP-55 checksum for EVM, base58 32-byte for Solana, base58check `T\u2026` for Tron."
+            "description": "EIP-55 checksum for EVM, base58 32-byte for Solana, base58check `T…` for Tron."
           },
           "nickname": {
             "type": "string"
@@ -1712,7 +1800,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "wch_01HZ\u2026"
+            "example": "wch_01HZ…"
           },
           "message": {
             "type": "string",
@@ -1734,7 +1822,7 @@
           "autoApprove",
           "signupSlug"
         ],
-        "description": "A workspace's affiliate-program config. OFF by default \u2014 the whole feature is INERT until `enabled` is true. A never-configured program returns the defaults shown here (enabled false, 0 bps, etc.).",
+        "description": "A workspace's affiliate-program config. OFF by default — the whole feature is INERT until `enabled` is true. A never-configured program returns the defaults shown here (enabled false, 0 bps, etc.).",
         "properties": {
           "enabled": {
             "type": "boolean",
@@ -1766,7 +1854,7 @@
           "signupSlug": {
             "type": "string",
             "nullable": true,
-            "description": "Public self-signup slug \u2014 the partner-facing URL is `${SITE}/a/<signupSlug>`. Null = no public front door. Generated when the program is first enabled."
+            "description": "Public self-signup slug — the partner-facing URL is `${SITE}/a/<signupSlug>`. Null = no public front door. Generated when the program is first enabled."
           }
         }
       },
@@ -1787,11 +1875,11 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "aff_01HZ\u2026"
+            "example": "aff_01HZ…"
           },
           "code": {
             "type": "string",
-            "description": "The attribution link param \u2014 `?aff=CODE`. Unique per workspace. Server-generated for self-signups; URL-safe (`[A-Za-z0-9_-]`)."
+            "description": "The attribution link param — `?aff=CODE`. Unique per workspace. Server-generated for self-signups; URL-safe (`[A-Za-z0-9_-]`)."
           },
           "name": {
             "type": "string"
@@ -1847,11 +1935,11 @@
           "createdAt",
           "paidAt"
         ],
-        "description": "One row of the commission ledger \u2014 what the merchant owes a partner for an attributed sale. Non-custodial: the merchant pays it out from their own wallet. Accrual is idempotent per (payment, affiliate).",
+        "description": "One row of the commission ledger — what the merchant owes a partner for an attributed sale. Non-custodial: the merchant pays it out from their own wallet. Accrual is idempotent per (payment, affiliate).",
         "properties": {
           "id": {
             "type": "string",
-            "example": "afc_01HZ\u2026"
+            "example": "afc_01HZ…"
           },
           "affiliateId": {
             "type": "string"
@@ -1866,7 +1954,7 @@
           },
           "commissionMinor": {
             "type": "integer",
-            "description": "Current owed commission in minor units \u2014 reduced in place if the sale is partially refunded. This is what the merchant pays."
+            "description": "Current owed commission in minor units — reduced in place if the sale is partially refunded. This is what the merchant pays."
           },
           "currency": {
             "type": "string",
@@ -1880,7 +1968,7 @@
               "paid",
               "void"
             ],
-            "description": "`pending` \u2192 payable; `paying` = a built payout is in flight (recover via release_payout); `paid` = merchant settled it; `void` = reversed/canceled."
+            "description": "`pending` → payable; `paying` = a built payout is in flight (recover via release_payout); `paid` = merchant settled it; `void` = reversed/canceled."
           },
           "paidTxHash": {
             "type": "string",
@@ -1908,7 +1996,7 @@
           "amountMinor",
           "unsignedTx"
         ],
-        "description": "The unsigned ERC-20 transfer the merchant signs from their own wallet to pay a partner (non-custodial \u2014 OpenSettle never moves funds, exactly like a refund). The rail is derived from the originating sale's payment. EVM-only; for Solana/Tron the merchant pays out manually and marks paid. Building this claims the commission `pending \u2192 paying`.",
+        "description": "The unsigned ERC-20 transfer the merchant signs from their own wallet to pay a partner (non-custodial — OpenSettle never moves funds, exactly like a refund). The rail is derived from the originating sale's payment. EVM-only; for Solana/Tron the merchant pays out manually and marks paid. Building this claims the commission `pending → paying`.",
         "properties": {
           "commissionId": {
             "type": "string"
@@ -1946,7 +2034,7 @@
               },
               "data": {
                 "type": "string",
-                "description": "`0x\u2026` encoded calldata for `transfer(recipient, amountBaseUnits)`."
+                "description": "`0x…` encoded calldata for `transfer(recipient, amountBaseUnits)`."
               },
               "value": {
                 "type": "string",
@@ -1989,7 +2077,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "ref_01HZ\u2026"
+            "example": "ref_01HZ…"
           },
           "refereeWorkspaceId": {
             "type": "string",
@@ -2001,7 +2089,7 @@
           },
           "rewardMinor": {
             "type": "integer",
-            "description": "Earned credit for this referral in minor units (currently always 0 \u2014 reward grant not yet wired)."
+            "description": "Earned credit for this referral in minor units (currently always 0 — reward grant not yet wired)."
           },
           "createdAt": {
             "type": "string",
@@ -2076,7 +2164,7 @@
           "defaultCommissionBps",
           "subscriptionCommission"
         ],
-        "description": "The minimal, PUBLIC program info an affiliate self-signup landing page needs \u2014 just enough for a partner to decide to apply. Deliberately leaks no workspace ids, counters, or private config.",
+        "description": "The minimal, PUBLIC program info an affiliate self-signup landing page needs — just enough for a partner to decide to apply. Deliberately leaks no workspace ids, counters, or private config.",
         "properties": {
           "merchantName": {
             "type": "string",
@@ -2130,7 +2218,7 @@
         }
       },
       "RateLimited": {
-        "description": "Too many requests \u2014 see `Retry-After` header",
+        "description": "Too many requests — see `Retry-After` header",
         "content": {
           "application/json": {
             "schema": {
@@ -2148,7 +2236,7 @@
         }
       },
       "BadRequest": {
-        "description": "Validation failure (`code: invalid_request`) \u2014 `param` points at the offending field.",
+        "description": "Validation failure (`code: invalid_request`) — `param` points at the offending field.",
         "content": {
           "application/json": {
             "schema": {
@@ -2158,7 +2246,7 @@
         }
       },
       "Conflict": {
-        "description": "State conflict (`code: conflict`) \u2014 usually a uniqueness collision.",
+        "description": "State conflict (`code: conflict`) — usually a uniqueness collision.",
         "content": {
           "application/json": {
             "schema": {
@@ -2204,7 +2292,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Required on every money-adjacent POST. Replaying with the same key returns the original response byte-for-byte. Different body + same key \u2192 409."
+        "description": "Required on every money-adjacent POST. Replaying with the same key returns the original response byte-for-byte. Different body + same key → 409."
       }
     }
   },
@@ -3341,7 +3429,7 @@
           "checkouts"
         ],
         "summary": "Create a hosted checkout session",
-        "description": "Returns a session with an absolute `hostedUrl`; redirect the customer straight to it (uses an unguessable 192-bit `hostedToken`, not the merchant-facing `id`). Mode `payment` requires `invoiceId`; mode `subscription` requires `priceId`.",
+        "description": "Returns a session with an absolute `hostedUrl` — redirect the customer straight to it (it uses an unguessable 192-bit `hostedToken`, never the merchant-facing `id`). A `payment` checkout takes exactly ONE funding source: an ad-hoc `amount` (the simplest path — a one-off charge, no customer and no pre-created invoice needed), a one-time `priceId`, or a pre-created `invoiceId`. The `amount` and `priceId` paths also require `chain` + `token`, and that rail must already have a verified settlement wallet on the workspace (otherwise 422 — call `GET /v1/workspaces/{workspaceId}/rails` first to see which pairs are ready). A `subscription` checkout requires a recurring `priceId`, a customer, and a chain/token.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3359,7 +3447,7 @@
                 "required": [
                   "mode"
                 ],
-                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). For mode `payment` the customer is OPTIONAL \u2014 omit both to create a GUEST checkout (scan-and-pay, no email), e.g. a reusable payment link; the response `customerId` is then null. Mode `subscription` always requires a customer. Mode `payment` takes exactly one of `invoiceId`, a one-time `priceId`, or an ad-hoc `amount` (the latter two also need a chain + token); mode `subscription` requires a recurring `priceId` and a chain/token.",
+                "description": "Customer: supply either `customerId` (existing) or `customerEmail` (find-or-create). For mode `payment` the customer is OPTIONAL — omit both to create a GUEST checkout (scan-and-pay, no email), e.g. a reusable payment link; the response `customerId` is then null. Mode `subscription` always requires a customer. Fund a `payment` with exactly ONE of: an ad-hoc `amount` (minor units — the simplest, no invoice needed), a one-time `priceId`, or a pre-created `invoiceId`. The `amount` and `priceId` paths also need a `chain` + `token` on a rail with a verified settlement wallet (check `GET /v1/workspaces/{workspaceId}/rails`); an `invoiceId` carries its own. Mode `subscription` requires a recurring `priceId` and a chain/token.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -3388,32 +3476,44 @@
                   "amount": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Ad-hoc one-time charge in MINOR units (cents). mode=payment only \u2014 alternative to invoiceId / a one-time priceId."
+                    "description": "Ad-hoc one-time charge in MINOR units (cents, e.g. 10000 = $100.00). mode=payment only — the simplest way to charge: no invoice or customer needed. Pair with `chain` + `token`. Mutually exclusive with `invoiceId` / `priceId`."
                   },
                   "currency": {
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3,
-                    "description": "Currency for an ad-hoc `amount`. Defaults to USD."
+                    "description": "ISO-4217 currency for an ad-hoc `amount`. Defaults to USD; must match the token's fiat peg."
                   },
                   "description": {
                     "type": "string",
                     "maxLength": 500,
-                    "description": "Buyer-facing description for an ad-hoc `amount` checkout."
+                    "description": "Buyer-facing description shown on the hosted page for an ad-hoc `amount` checkout."
                   },
                   "successUrl": {
                     "type": "string",
-                    "format": "uri"
+                    "format": "uri",
+                    "description": "Absolute http(s) URL the buyer is redirected to after a confirmed payment (a relative path is rejected 400). Optional — omit for a shareable link with no return destination."
                   },
                   "cancelUrl": {
                     "type": "string",
-                    "format": "uri"
+                    "format": "uri",
+                    "description": "Absolute http(s) URL for the merchant's own cancel affordance. Optional; the hosted page itself does not render a cancel-and-return button."
                   },
                   "chain": {
-                    "$ref": "#/components/schemas/ChainId"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/ChainId"
+                      }
+                    ],
+                    "description": "Settlement chain. Required with an ad-hoc `amount` or a one-time `priceId` (an `invoiceId` carries its own). The (chain, token) pair must have a verified settlement wallet on the workspace — see `GET /v1/workspaces/{workspaceId}/rails`."
                   },
                   "token": {
-                    "$ref": "#/components/schemas/TokenSymbol"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/TokenSymbol"
+                      }
+                    ],
+                    "description": "Settlement stablecoin (USDC / USDT). Required alongside `chain` on the `amount` and `priceId` paths."
                   },
                   "expiresInMinutes": {
                     "type": "integer",
@@ -3501,7 +3601,7 @@
           "checkouts"
         ],
         "summary": "Send a test payment (TEST MODE ONLY)",
-        "description": "One-call sandbox helper for validating your integration end-to-end: creates a throwaway $1 test checkout on your first verified test settlement wallet and immediately simulates a confirmed payment on it, firing the full confirm\u2192settle\u2192webhook fanout (checkout \u2192 succeeded + the payment.confirmed webhook) WITHOUT any on-chain transfer. HARD-gated to test-mode workspaces (sk_test_ keys): 404 on a live workspace. Requires a verified test settlement wallet (400 otherwise). Requires the `developer` role.",
+        "description": "One-call sandbox helper for validating your integration end-to-end: creates a throwaway $1 test checkout on your first verified test settlement wallet and immediately simulates a confirmed payment on it, firing the full confirm→settle→webhook fanout (checkout → succeeded + the payment.confirmed webhook) WITHOUT any on-chain transfer. HARD-gated to test-mode workspaces (sk_test_ keys): 404 on a live workspace. Requires a verified test settlement wallet (400 otherwise). Requires the `developer` role.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3544,7 +3644,7 @@
           "checkouts"
         ],
         "summary": "Simulate a payment (TEST MODE ONLY)",
-        "description": "Sandbox helper: synthesizes a confirmed payment for this checkout and runs the FULL confirm\u2192settle\u2192webhook fanout (checkout \u2192 succeeded, invoice \u2192 paid, subscription activation, and the `payment.confirmed` webhook), WITHOUT any on-chain transfer. Use it to validate your webhook handler + grant-access logic end-to-end without spending real funds. HARD-gated to test-mode workspaces (sk_test_ keys): on a live workspace it returns 404. Requires the `developer` role.",
+        "description": "Sandbox helper: synthesizes a confirmed payment for this checkout and runs the FULL confirm→settle→webhook fanout (checkout → succeeded, invoice → paid, subscription activation, and the `payment.confirmed` webhook), WITHOUT any on-chain transfer. Use it to validate your webhook handler + grant-access logic end-to-end without spending real funds. HARD-gated to test-mode workspaces (sk_test_ keys): on a live workspace it returns 404. Requires the `developer` role.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3592,7 +3692,7 @@
           "payment_links"
         ],
         "summary": "Create a reusable payment link",
-        "description": "A shareable link whose `url` (`https://opensettle.io/pay/<token>`) spawns a fresh checkout on every visit \u2014 built for scan-and-pay, embeds, or \"pay what you want\". Supply exactly ONE amount source: a fixed `amount`, a saved `priceId` (one-time, or a recurring price to make a Subscribe link), or `openAmount: true` to let the buyer name the amount (bounded by `minAmount`/`maxAmount`). One-time and open-amount links are guest checkouts with no email required; a recurring-price Subscribe link collects the buyer email so each visitor gets their own subscription. The 201 body wraps the resource as `{ \"paymentLink\": PaymentLink }`. Requires the `developer` role.",
+        "description": "A shareable link whose `url` (`https://opensettle.io/pay/<token>`) spawns a fresh checkout on every visit — built for scan-and-pay, embeds, or \"pay what you want\". Supply exactly ONE amount source: a fixed `amount`, a saved `priceId` (one-time, or a recurring price to make a Subscribe link), or `openAmount: true` to let the buyer name the amount (bounded by `minAmount`/`maxAmount`). One-time and open-amount links are guest checkouts with no email required; a recurring-price Subscribe link collects the buyer email so each visitor gets their own subscription. The 201 body wraps the resource as `{ \"paymentLink\": PaymentLink }`. Requires the `developer` role.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -3611,7 +3711,7 @@
                   "chain",
                   "token"
                 ],
-                "description": "Exactly one amount source: `amount` (fixed), `priceId` (saved price \u2014 one-time charges once, a recurring price makes a Subscribe link), or `openAmount: true`. `description` is required for a fixed `amount` or an open-amount link.",
+                "description": "Exactly one amount source: `amount` (fixed), `priceId` (saved price — one-time charges once, a recurring price makes a Subscribe link), or `openAmount: true`. `description` is required for a fixed `amount` or an open-amount link.",
                 "properties": {
                   "amount": {
                     "type": "integer",
@@ -3620,7 +3720,7 @@
                   },
                   "priceId": {
                     "type": "string",
-                    "description": "A saved price to charge. A one-time price charges once; a recurring price makes the link a reusable Subscribe link \u2014 the buyer enters an email and each visitor gets their own subscription."
+                    "description": "A saved price to charge. A one-time price charges once; a recurring price makes the link a reusable Subscribe link — the buyer enters an email and each visitor gets their own subscription."
                   },
                   "openAmount": {
                     "type": "boolean",
@@ -4063,7 +4163,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Body is optional \u2014 server defaults to `mode: at_period_end` with no reason.",
+                "description": "Body is optional — server defaults to `mode: at_period_end` with no reason.",
                 "properties": {
                   "mode": {
                     "type": "string",
@@ -4141,7 +4241,7 @@
                       "at_period_end"
                     ],
                     "default": "at_period_end",
-                    "description": "How this swap is billed. Only `at_period_end` (the default) is implemented: the new price takes effect at the next billing cycle, with no mid-cycle credit or charge, and is echoed on the `subscription.plan_changed` event. `immediately` is **not implemented** \u2014 passing it is rejected with `400 invalid_request` (no proration credits/charges exist yet) rather than silently ignored, so you can't be misled into thinking a mid-cycle charge fired. The enum keeps `immediately` wire-compatible for when proration billing ships."
+                    "description": "How this swap is billed. Only `at_period_end` (the default) is implemented: the new price takes effect at the next billing cycle, with no mid-cycle credit or charge, and is echoed on the `subscription.plan_changed` event. `immediately` is **not implemented** — passing it is rejected with `400 invalid_request` (no proration credits/charges exist yet) rather than silently ignored, so you can't be misled into thinking a mid-cycle charge fired. The enum keeps `immediately` wire-compatible for when proration billing ships."
                   }
                 }
               }
@@ -4205,7 +4305,7 @@
           "wallets"
         ],
         "summary": "Register a new settlement wallet (issues challenge)",
-        "description": "Creates the wallet row in `unverified` state and returns a one-time challenge. Sign the challenge with the wallet's key, then POST to `/wallets/{id}/verify` with the signature. Requires a DASHBOARD SESSION + step-up auth \u2014 NOT an API key (a Bearer token returns 401). Add settlement wallets in the dashboard.",
+        "description": "Creates the wallet row in `unverified` state and returns a one-time challenge. Sign the challenge with the wallet's key, then POST to `/wallets/{id}/verify` with the signature. Requires a DASHBOARD SESSION + step-up auth — NOT an API key (a Bearer token returns 401). Add settlement wallets in the dashboard.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -4438,7 +4538,7 @@
           "wallets"
         ],
         "summary": "Submit a signed challenge to verify wallet ownership",
-        "description": "Signature wire-formats per chain \u2014 EVM: `0x\u2026` ERC-191 personal-sign hex; Solana: base58 Ed25519 (64 bytes); Tron: `0x\u2026` TIP-191 hex. Challenge is consumed atomically before signature verify, so a replay can't succeed even if you POST the same nonce twice. Step-up auth required.",
+        "description": "Signature wire-formats per chain — EVM: `0x…` ERC-191 personal-sign hex; Solana: base58 Ed25519 (64 bytes); Tron: `0x…` TIP-191 hex. Challenge is consumed atomically before signature verify, so a replay can't succeed even if you POST the same nonce twice. Step-up auth required.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -4473,7 +4573,7 @@
                     "minLength": 60,
                     "maxLength": 200,
                     "pattern": "^(0x[0-9a-fA-F]+|[1-9A-HJ-NP-Za-km-z]+)$",
-                    "description": "Hex (0x\u2026) for EVM/Tron, base58 for Solana Ed25519."
+                    "description": "Hex (0x…) for EVM/Tron, base58 for Solana Ed25519."
                   }
                 }
               }
@@ -4690,10 +4790,10 @@
                     "items": {
                       "oneOf": [
                         {
+                          "type": "string",
                           "enum": [
                             "*"
-                          ],
-                          "type": "string"
+                          ]
                         },
                         {
                           "$ref": "#/components/schemas/WebhookEventType"
@@ -4779,7 +4879,7 @@
           "webhooks"
         ],
         "summary": "Rotate the signing secret",
-        "description": "Returns a new plaintext signing secret. There is NO grace window \u2014 the previous secret stops verifying immediately, so deploy the new secret to your endpoint as you rotate. (The webhook retry curve gives you time to redeploy before deliveries are dropped.)",
+        "description": "Returns a new plaintext signing secret. There is NO grace window — the previous secret stops verifying immediately, so deploy the new secret to your endpoint as you rotate. (The webhook retry curve gives you time to redeploy before deliveries are dropped.)",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -4809,7 +4909,7 @@
                     },
                     "signingSecret": {
                       "type": "string",
-                      "example": "whsec_\u2026"
+                      "example": "whsec_…"
                     }
                   }
                 }
@@ -4873,7 +4973,7 @@
           "rails"
         ],
         "summary": "List settlement rails (readiness)",
-        "description": "Returns the distinct (chain, token) pairs the workspace has a verified settlement wallet for. A rail listed here is exactly a rail a checkout can be created + paid on without a 422. Empty `data` means the workspace cannot settle yet \u2014 add and verify a wallet in the dashboard. This endpoint, unlike `/wallets`, is API-key readable.",
+        "description": "Returns the distinct (chain, token) pairs the workspace has a verified settlement wallet for. A rail listed here is exactly a rail a checkout can be created + paid on without a 422. Empty `data` means the workspace cannot settle yet — add and verify a wallet in the dashboard. This endpoint, unlike `/wallets`, is API-key readable.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5168,7 +5268,7 @@
           "webhooks"
         ],
         "summary": "Register a webhook endpoint",
-        "description": "The `signingSecret` is returned exactly once. Verify webhook payloads by HMAC-SHA256 of `${timestamp}.${body}` against this secret; the signature header is `x-opensettle-signature: t=\u2026,v1=\u2026`.",
+        "description": "The `signingSecret` is returned exactly once. Verify webhook payloads by HMAC-SHA256 of `${timestamp}.${body}` against this secret; the signature header is `x-opensettle-signature: t=…,v1=…`.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5204,10 +5304,10 @@
                     "items": {
                       "oneOf": [
                         {
+                          "type": "string",
                           "enum": [
                             "*"
-                          ],
-                          "type": "string"
+                          ]
                         },
                         {
                           "$ref": "#/components/schemas/WebhookEventType"
@@ -5237,7 +5337,7 @@
                     },
                     "signingSecret": {
                       "type": "string",
-                      "example": "whsec_\u2026"
+                      "example": "whsec_…"
                     }
                   }
                 }
@@ -5367,13 +5467,298 @@
         }
       }
     },
+    "/v1/workspaces/{workspaceId}/entitlements": {
+      "get": {
+        "tags": [
+          "entitlements"
+        ],
+        "summary": "List a customer's entitlements",
+        "description": "Identify the customer by `customerId` or `appUserId` (query param). Returns the union of subscription-derived and manual entitlements.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appUserId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The customer's entitlements (`{ data: EntitlementCheck[] }`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EntitlementCheck"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/entitlements/check": {
+      "post": {
+        "tags": [
+          "entitlements"
+        ],
+        "summary": "Check access for a customer + key",
+        "description": "\"Does this user have access to <key>?\" in one call. Identify the customer by `customerId` or `appUserId`. Returns the live decision (an active/trialing subscription on a price with this `entitlementKey`, or an active manual grant — subscription wins). API-key readable.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "example": "pro"
+                  },
+                  "customerId": {
+                    "type": "string"
+                  },
+                  "appUserId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entitlement": {
+                      "$ref": "#/components/schemas/EntitlementCheck"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/entitlements/grant": {
+      "post": {
+        "tags": [
+          "entitlements"
+        ],
+        "summary": "Manually grant an entitlement",
+        "description": "Requires `developer` role. Grants access independent of a subscription (comped / enterprise / lifetime). Re-granting the same key refreshes the one row. Emits `entitlement.granted`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "example": "pro"
+                  },
+                  "customerId": {
+                    "type": "string"
+                  },
+                  "appUserId": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Granted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entitlement": {
+                      "$ref": "#/components/schemas/Entitlement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/entitlements/revoke": {
+      "post": {
+        "tags": [
+          "entitlements"
+        ],
+        "summary": "Revoke a manual entitlement",
+        "description": "Requires `developer` role. Revokes a manual grant (idempotent — a second revoke is a no-op, no duplicate event). To stop subscription-derived access, cancel the subscription. Emits `entitlement.revoked`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "example": "pro"
+                  },
+                  "customerId": {
+                    "type": "string"
+                  },
+                  "appUserId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revoked (or already revoked)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entitlement": {
+                      "$ref": "#/components/schemas/Entitlement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspaceId}/affiliate_program": {
       "get": {
         "tags": [
           "affiliates"
         ],
         "summary": "Retrieve the affiliate-program config",
-        "description": "Requires `developer` role (the `restricted` API-key permission) \u2014 `signupSlug` + `couponId` are config, not viewer-readable. A never-configured program returns the defaults (disabled, 0 bps).",
+        "description": "Requires `developer` role (the `restricted` API-key permission) — `signupSlug` + `couponId` are config, not viewer-readable. A never-configured program returns the defaults (disabled, 0 bps).",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5408,7 +5793,7 @@
           "affiliates"
         ],
         "summary": "Update the affiliate-program config",
-        "description": "Requires `admin` role (the `full` API-key permission). All fields optional \u2014 only the keys present are changed. Enabling the program for the first time allocates a `signupSlug`.",
+        "description": "Requires `admin` role (the `full` API-key permission). All fields optional — only the keys present are changed. Enabling the program for the first time allocates a `signupSlug`.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5484,7 +5869,7 @@
           "affiliates"
         ],
         "summary": "List affiliates",
-        "description": "Requires `developer` role \u2014 partner email + payout wallet are PII, not viewer-readable.",
+        "description": "Requires `developer` role — partner email + payout wallet are PII, not viewer-readable.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5522,7 +5907,7 @@
           "affiliates"
         ],
         "summary": "Register an affiliate",
-        "description": "Requires `developer` role. `code` is optional \u2014 auto-generated (unique per workspace) when omitted.",
+        "description": "Requires `developer` role. `code` is optional — auto-generated (unique per workspace) when omitted.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5619,7 +6004,7 @@
           "affiliates"
         ],
         "summary": "Disable (remove / reject) an affiliate",
-        "description": "Requires `developer` role. Sets the affiliate's status to `disabled` \u2014 also used to reject a `pending` self-signup applicant.",
+        "description": "Requires `developer` role. Sets the affiliate's status to `disabled` — also used to reject a `pending` self-signup applicant.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5670,7 +6055,7 @@
           "affiliates"
         ],
         "summary": "Approve a pending self-signup applicant",
-        "description": "Requires `developer` role. Promotes a `pending` applicant to `active` so they begin earning. Rejecting is the DELETE above (\u2192 `disabled`).",
+        "description": "Requires `developer` role. Promotes a `pending` applicant to `active` so they begin earning. Rejecting is the DELETE above (→ `disabled`).",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5686,7 +6071,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Approved (\u2192 active)",
+            "description": "Approved (→ active)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5721,7 +6106,7 @@
           "affiliates"
         ],
         "summary": "List commissions (the payout ledger)",
-        "description": "Requires `developer` role \u2014 the commission ledger is the merchant's payout liability, not viewer-readable.",
+        "description": "Requires `developer` role — the commission ledger is the merchant's payout liability, not viewer-readable.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5761,7 +6146,7 @@
           "affiliates"
         ],
         "summary": "Mark a commission as paid",
-        "description": "Requires `admin` role. Settles a `pending` (manual/out-of-band) or `paying` (built-tx flow) commission \u2192 `paid`, optionally recording the payout tx hash.",
+        "description": "Requires `admin` role. Settles a `pending` (manual/out-of-band) or `paying` (built-tx flow) commission → `paid`, optionally recording the payout tx hash.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5828,7 +6213,7 @@
           "affiliates"
         ],
         "summary": "Build a non-custodial commission payout",
-        "description": "Requires `admin` role. Returns the unsigned ERC-20 transfer the merchant signs from their own wallet (OpenSettle never moves funds). The rail is derived from the originating sale's payment; EVM-only. Building it claims the commission `pending \u2192 paying`; after broadcasting, POST the hash to `mark_paid` (or `release_payout` to revert).",
+        "description": "Requires `admin` role. Returns the unsigned ERC-20 transfer the merchant signs from their own wallet (OpenSettle never moves funds). The rail is derived from the originating sale's payment; EVM-only. Building it claims the commission `pending → paying`; after broadcasting, POST the hash to `mark_paid` (or `release_payout` to revert).",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5859,7 +6244,7 @@
             }
           },
           "400": {
-            "description": "Cannot build a payout tx for this chain/token (e.g. non-EVM) \u2014 pay manually and mark paid"
+            "description": "Cannot build a payout tx for this chain/token (e.g. non-EVM) — pay manually and mark paid"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5882,7 +6267,7 @@
           "affiliates"
         ],
         "summary": "Release a claimed payout back to pending",
-        "description": "Requires `admin` role. Reverts a `paying` commission (a built-but-unsigned payout the merchant abandoned) back to `pending` so it can be paid later \u2014 without it the row strands in `paying`.",
+        "description": "Requires `admin` role. Reverts a `paying` commission (a built-but-unsigned payout the merchant abandoned) back to `pending` so it can be paid later — without it the row strands in `paying`.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -5898,7 +6283,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Released (\u2192 pending)",
+            "description": "Released (→ pending)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5962,7 +6347,7 @@
           "referrals"
         ],
         "summary": "Apply another merchant's referral code to this workspace",
-        "description": "Requires `admin` role. Records a `pending` referral with THIS workspace as the referee \u2014 e.g. during onboarding. Self-referral, an unknown code, and an already-referred workspace are all rejected.",
+        "description": "Requires `admin` role. Records a `pending` referral with THIS workspace as the referee — e.g. during onboarding. Self-referral, an unknown code, and an already-referred workspace are all rejected.",
         "parameters": [
           {
             "$ref": "#/components/parameters/WorkspaceId"
@@ -6038,7 +6423,7 @@
           "affiliate_signup"
         ],
         "summary": "Public affiliate self-signup info",
-        "description": "PUBLIC (no auth), rate-limited. Returns only the merchant name + commission terms a partner needs to decide to apply on the merchant's `/a/<slug>` page \u2014 never workspace ids, counters, or private config. Returns 404 (not 400) for an unknown / malformed / disabled-program slug so a scanner can't tell them apart.",
+        "description": "PUBLIC (no auth), rate-limited. Returns only the merchant name + commission terms a partner needs to decide to apply on the merchant's `/a/<slug>` page — never workspace ids, counters, or private config. Returns 404 (not 400) for an unknown / malformed / disabled-program slug so a scanner can't tell them apart.",
         "security": [],
         "parameters": [
           {
@@ -6079,7 +6464,7 @@
           "affiliate_signup"
         ],
         "summary": "Submit a public affiliate self-signup application",
-        "description": "PUBLIC (no auth), rate-limited per-slug AND per-IP (it's an unauthenticated write that can create an `affiliates` row). The applicant lands as `pending` (or `active` when the program auto-approves) and a `pending` applicant earns nothing until the merchant approves. Deduped by email. `code` is NOT applicant-supplied \u2014 it is server-generated. Returns only `{ status }` \u2014 no code or PII leak.",
+        "description": "PUBLIC (no auth), rate-limited per-slug AND per-IP (it's an unauthenticated write that can create an `affiliates` row). The applicant lands as `pending` (or `active` when the program auto-approves) and a `pending` applicant earns nothing until the merchant approves. Deduped by email. `code` is NOT applicant-supplied — it is server-generated. Returns only `{ status }` — no code or PII leak.",
         "security": [],
         "parameters": [
           {
@@ -6116,7 +6501,7 @@
                     "type": "string",
                     "maxLength": 128,
                     "nullable": true,
-                    "description": "Optional \u2014 the partner can add it later; required to be paid out."
+                    "description": "Optional — the partner can add it later; required to be paid out."
                   },
                   "payoutChain": {
                     "allOf": [
